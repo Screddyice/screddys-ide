@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Preview version, such as 0.1.42-preview.20261122.1
-        required: true
-        default: 0.1.42-preview.20261122.1
+        description: Preview version, such as 0.1.42-preview.20261122.1. Leave empty to only run the PR verification (the Crow fallback does this).
+        required: false
+        default: ""
         type: string
 
 permissions:
@@ -23,9 +23,9 @@ jobs:
   # ci/crow/... status within seconds of a push. On a PR this job waits up to 3 minutes
   # for one: found, the verify job is skipped and Crow's result is the merge check;
   # none (Mac asleep or offline, webhook lost), the verify job runs here as before.
-  # Packaging runs (workflow_dispatch) never wait.
+  # Manual runs (packaging, or the Crow fallback's verification) never wait.
   crow-gate:
-    if: github.repository == 'Screddyice/screddys-ide' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
+    if: github.repository == 'Screddyice/screddys-ide' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || inputs.version == '')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -55,7 +55,7 @@ jobs:
           echo run=true >> "$GITHUB_OUTPUT"
 
   package:
-    name: ${{ github.event_name == 'pull_request' && 'Verify Screddy changes' || 'Build Apple Silicon packages' }}
+    name: ${{ (github.event_name == 'pull_request' || inputs.version == '') && 'Verify Screddy changes' || 'Build Apple Silicon packages' }}
     needs: crow-gate
     if: needs.crow-gate.outputs.run == 'true'
     runs-on: macos-15
@@ -81,7 +81,7 @@ jobs:
           test "$(node -p 'process.version')" = "v$(node -p 'require("./package.json").engines.node')"
 
       - name: Validate build inputs
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.version != ''
         shell: bash
         run: |
           [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]{8}\.[0-9]+$ ]]
@@ -104,7 +104,7 @@ jobs:
             src/components/chat/SplitThreadWorkspace.browser.test.tsx
 
       - name: Build Apple Silicon DMG and ZIP
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.version != ''
         run: |
           cp .env.example .env
           pnpm exec node scripts/build-desktop-artifact.ts \
@@ -112,7 +112,7 @@ jobs:
             --build-version "$RELEASE_VERSION" --output-dir "$RUNNER_TEMP/screddy-packages"
 
       - name: Verify artifacts and write checksums
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.version != ''
         working-directory: ${{ runner.temp }}/screddy-packages
         run: |
           dmg="Screddy-$RELEASE_VERSION-arm64.dmg"
@@ -127,7 +127,7 @@ jobs:
           shasum -a 256 -c SHA256SUMS
 
       - name: Upload preview packages
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.version != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: Screddy-${{ inputs.version }}-arm64
