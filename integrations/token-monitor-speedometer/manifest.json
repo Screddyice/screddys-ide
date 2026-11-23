@@ -1,0 +1,19 @@
+{
+  "tmApi": 1,
+  "id": "screddy-speedometer",
+  "name": "Screddy Token Speedometer",
+  "version": "1.6.4",
+  "ui": "speedometer.mjs",
+  "backend": "activity.cjs",
+  "css": ["speedometer.css"],
+  "description": "Current token throughput and session totals, plus the application Screddy is actively controlling through CuaDriver.",
+  "files": ["speedometer.mjs", "speedometer.css", "screddy.png", "activity.cjs"],
+  "views": [
+    {
+      "id": "gauge",
+      "title": "Token Speedometer",
+      "surfaces": ["home", "tray"],
+      "defaultSurfaces": ["home", "tray"]
+    }
+  ]
+}

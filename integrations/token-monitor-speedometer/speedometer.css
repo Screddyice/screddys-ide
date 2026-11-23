@@ -1,0 +1,412 @@
+:root {
+  /* Matches the dark Screddy IDE's primary action color. */
+  --screddy-green: #37c971;
+}
+
+.screddy-brand-link {
+  display: inline-flex;
+  flex: none;
+  align-self: center;
+  border-radius: 50%;
+  -webkit-app-region: no-drag;
+}
+
+.screddy-brand-link:focus-visible {
+  outline: 2px solid var(--screddy-green);
+  outline-offset: 2px;
+}
+
+.screddy-brand-link img {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.shell .app-title > .app-title-mark:has(+ .screddy-title-brand),
+.shell .app-title > .screddy-title-brand {
+  display: none;
+}
+
+.shell:is(.title-collapsed, .title-icon-only, .plugin-page-mode) .app-title > .screddy-title-brand {
+  display: inline-flex;
+}
+
+.screddy-title-brand img {
+  width: 20px;
+  height: 20px;
+}
+
+.shell:has(#homePanel:not(.hidden)) #viewSwitcher,
+.about-settings
+  :is(
+    #openRepositoryButton,
+    #openWebsiteButton,
+    #reportIssueButton,
+    [data-i18n="settings.about.description"]
+  ) {
+  display: none;
+}
+
+.home-module[data-plugin-ref="screddy-speedometer/gauge"]:has(.screddy-speedometer)
+  > .home-module-head {
+  display: none;
+}
+
+.home-module-model,
+.home-module-session {
+  padding: 9px;
+  border: 1px solid rgba(var(--line-rgb), 0.18);
+  border-radius: 8px;
+}
+
+:is(.home-module-model, .home-module-session) .home-module-head {
+  padding-inline-start: 7px;
+  border-inline-start: 3px solid var(--screddy-green);
+}
+
+.home-module-model .home-model-row {
+  grid-template-columns: 10px minmax(0, 1fr) 5.5ch 6.5ch;
+}
+
+.home-model-row:first-child .home-list-name::before {
+  content: "Model";
+}
+.home-model-row:first-child .home-list-value::before {
+  content: "Tokens";
+}
+.home-model-row:first-child .home-list-aux::before {
+  content: "Share";
+}
+
+.home-model-row:first-child :is(.home-list-name, .home-list-value, .home-list-aux)::before {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font:
+    600 0.625rem/1.2 system-ui,
+    sans-serif;
+}
+
+.home-model-row:first-child .home-list-mark {
+  align-self: end;
+}
+
+.home-session-row + .home-session-row {
+  padding-top: 6px;
+  border-top: 1px solid rgba(var(--line-rgb), 0.12);
+}
+
+.home-session-row .home-list-value::after {
+  content: " tokens";
+  color: var(--muted);
+  font-size: 0.625rem;
+}
+
+.home-session-context::before {
+  content: "Context";
+}
+:root:has(input[name="sessionContextMetric"][value="remaining"]:checked)
+  .home-session-context::before {
+  content: "Context left";
+}
+:root:has(input[name="sessionContextMetric"][value="used"]:checked) .home-session-context::before {
+  content: "Context used";
+}
+
+.home-module-limits .home-limit-account {
+  padding: 9px;
+  border: 1px solid rgba(var(--overlay-rgb), 0.14);
+  border-radius: 8px;
+  background: rgba(var(--overlay-rgb), 0.04);
+}
+
+.home-module-limits .home-limit-account-head {
+  grid-template-columns: 12px minmax(0, 1fr);
+}
+
+.home-module-limits .home-limit-account-head:has(> .home-limit-plan) {
+  grid-template-columns: 12px minmax(0, 1fr) fit-content(42%);
+}
+
+.home-module-limits .home-limit-account-head .home-list-name {
+  font-weight: 650;
+}
+
+.home-module-limits .home-limit-windows {
+  margin-left: 0;
+  gap: 6px;
+}
+
+.home-module-limits .home-limit-window {
+  padding: 6px;
+  border-radius: 5px;
+  background: rgba(var(--overlay-rgb), 0.06);
+}
+
+.home-module-limits .home-limit-window .limit-meter {
+  height: 4px;
+}
+
+.home-module-limits .home-limit-window .limit-meter-fill {
+  background: var(--screddy-green) !important;
+}
+
+.screddy-speedometer {
+  box-sizing: border-box;
+  padding: 11px 13px 10px;
+  color: #f7f8fa;
+  background: #101311;
+  border: 1px solid #3b4940;
+  border-radius: 9px;
+  font:
+    13px/1.25 system-ui,
+    sans-serif;
+}
+
+.screddy-speedometer-heading,
+.screddy-speedometer-activity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.screddy-speedometer-heading > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 650;
+  font-size: 11px;
+}
+
+.screddy-speedometer [data-status] {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #b4c0cc;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.screddy-speedometer [data-status]::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 100%;
+  background: currentColor;
+  content: "";
+}
+
+.screddy-speedometer [data-status].is-live,
+.screddy-speedometer-activity {
+  color: var(--screddy-green);
+}
+
+.screddy-speedometer-activity {
+  align-items: baseline;
+  margin-bottom: 10px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid #354050;
+  font-size: 11px;
+}
+
+.screddy-speedometer-activity[hidden] {
+  display: none;
+}
+
+.screddy-speedometer-activity strong {
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.screddy-speedometer-dial {
+  margin-top: 12px;
+}
+
+.screddy-speedometer-track {
+  --fill: 0%;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  height: 23px;
+  background: #161b17;
+  border-bottom: 1px solid #454d47;
+}
+
+.screddy-speedometer-track::before {
+  position: absolute;
+  inset: 8px 8px auto;
+  height: 7px;
+  background: repeating-linear-gradient(90deg, #68716a 0 1px, transparent 1px 5%);
+  transform: skewX(16deg);
+  content: "";
+}
+
+.screddy-speedometer-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--fill);
+  background: linear-gradient(90deg, #499b69, #b5f1cb);
+  clip-path: polygon(0 0, max(0px, calc(100% - 10px)) 0, 100% 100%, 0 100%);
+  transition: width 150ms ease-out;
+}
+
+.screddy-speedometer-track.is-hot .screddy-speedometer-fill {
+  background: linear-gradient(90deg, #499b69, #b5f1cb 86%, #ffa451);
+}
+
+.screddy-speedometer-scale {
+  position: absolute;
+  inset: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #e1ebe5;
+  font:
+    550 12px/1 ui-monospace,
+    monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.screddy-speedometer-scale > span {
+  padding: 0 3px;
+  background: #161b17;
+}
+
+.screddy-speedometer-scale > .is-filled {
+  color: #071c10;
+  background: transparent;
+}
+
+.screddy-speedometer-speed {
+  margin: 10px 0 8px;
+  text-align: center;
+}
+
+.screddy-speedometer-label,
+.screddy-speedometer-unit,
+.screddy-speedometer-session-field {
+  color: #bdc8d4;
+  font-size: 11px;
+}
+
+.screddy-speedometer-dial .screddy-speedometer-label {
+  display: block;
+  margin-bottom: 1px;
+  font-size: 10px;
+}
+
+.screddy-speedometer strong {
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.screddy-speedometer-speed strong {
+  display: block;
+  color: var(--screddy-green);
+  font-size: clamp(41px, 16vw, 57px);
+  font-family: ui-monospace, monospace;
+  font-weight: 420;
+  letter-spacing: -0.075em;
+}
+
+.screddy-speedometer-unit {
+  color: #b6d9c4;
+  font:
+    11px/1.2 ui-monospace,
+    monospace;
+}
+
+.screddy-speedometer-total {
+  position: relative;
+  isolation: isolate;
+  width: fit-content;
+  min-width: 55%;
+  margin: 0 auto;
+  padding: 8px 20px 5px;
+  text-align: center;
+}
+
+.screddy-speedometer-total::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(#88ae94 0 1px, #252f27 1px, #101311);
+  clip-path: polygon(12% 0, 88% 0, 100% 100%, 0 100%);
+  content: "";
+}
+
+.screddy-speedometer-total strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font:
+    430 20px/1.15 ui-monospace,
+    monospace;
+  letter-spacing: -0.035em;
+}
+
+.screddy-speedometer-total .screddy-speedometer-label {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+}
+
+.screddy-speedometer-session-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 27px;
+  margin-top: 5px;
+  padding: 2px 24px 2px 7px;
+  border: 0;
+  border-top: 1px solid #333e35;
+  border-radius: 0;
+  background: transparent;
+}
+
+.screddy-speedometer-session-field:focus-within {
+  outline: 2px solid var(--screddy-green);
+  outline-offset: 2px;
+}
+
+.screddy-speedometer-session-field::after {
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  width: 6px;
+  height: 6px;
+  border: solid currentColor;
+  border-width: 0 1px 1px 0;
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+  content: "";
+}
+
+.screddy-speedometer-session-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.screddy-speedometer-session {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  color-scheme: dark;
+  cursor: pointer;
+}
+
+.screddy-speedometer-session:disabled {
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screddy-speedometer-fill {
+    transition: none;
+  }
+}

@@ -13,6 +13,7 @@ export interface McpProviderSessionConfig {
   /** Omit preview_* instructions when the user withholds agent browser access. */
   readonly browserToolsAvailable: boolean;
   readonly computerUseCommand?: string;
+  readonly computerUseArgs?: ReadonlyArray<string>;
   readonly capabilities?: ReadonlySet<string>;
   readonly agentDeviceEnvironment?: Readonly<Record<string, string>>;
 }
