@@ -56,6 +56,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
+import { withProjectWorkContext } from "./ProjectWorkContext.ts";
 
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_MAX_IDLE_PIN_MS = 4 * 60 * 60 * 1000;
@@ -2154,7 +2155,25 @@ export const layerWithOptions = (
                     ),
                   ),
                   () =>
-                    runtime.startTurn(input).pipe(turnMetrics("send", input.modelSelection.model)),
+                    Effect.gen(function* () {
+                      const original = input.message.text;
+                      const peers = original.trimStart().startsWith("/")
+                        ? []
+                        : ((yield* projectionStore
+                            .getShellSnapshot({
+                              location: "active",
+                              projectId: input.appThread.projectId,
+                            })
+                            .pipe(Effect.orElseSucceed(() => null)))?.threads ?? []);
+                      const text = withProjectWorkContext(original, input.appThread, peers);
+                      const turn =
+                        text === original
+                          ? input
+                          : { ...input, message: { ...input.message, text } };
+                      return yield* runtime
+                        .startTurn(turn)
+                        .pipe(turnMetrics("send", input.modelSelection.model));
+                    }),
                   (_, exit) =>
                     Exit.isFailure(exit)
                       ? observeActivity(

@@ -437,6 +437,9 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
     readonly backgroundTasksEndWithProcess?: boolean;
     readonly hangSessionScopeClose?: boolean;
     readonly startTurn?: Effect.Effect<void>;
+    readonly onStartTurn?: (
+      input: ProviderAdapter.ProviderAdapterV2TurnInput,
+    ) => Effect.Effect<void>;
     readonly interruptTurn?: Effect.Effect<void>;
     readonly beforeUnload?: Effect.Effect<void>;
     readonly spawnBeforeOpen?: boolean;
@@ -544,7 +547,7 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
               ...current,
               resumeCount: current.resumeCount + 1,
             })).pipe(Effect.as(threadInput.providerThread)),
-          startTurn: () => options.startTurn ?? Effect.void,
+          startTurn: (input) => options.onStartTurn?.(input) ?? options.startTurn ?? Effect.void,
           steerTurn: () => Effect.void,
           interruptTurn: () =>
             Ref.update(state, (current) => ({
@@ -599,6 +602,7 @@ function layerTest(input: {
   readonly backgroundTasksEndWithProcess?: boolean;
   readonly hangSessionScopeClose?: boolean;
   readonly startTurn?: Effect.Effect<void>;
+  readonly onStartTurn?: (input: ProviderAdapter.ProviderAdapterV2TurnInput) => Effect.Effect<void>;
   readonly interruptTurn?: Effect.Effect<void>;
   readonly beforeUnload?: Effect.Effect<void>;
   readonly spawnBeforeOpen?: boolean;
@@ -638,6 +642,7 @@ function layerTest(input: {
         ? {}
         : { hangSessionScopeClose: input.hangSessionScopeClose }),
       ...(input.startTurn === undefined ? {} : { startTurn: input.startTurn }),
+      ...(input.onStartTurn === undefined ? {} : { onStartTurn: input.onStartTurn }),
       ...(input.interruptTurn === undefined ? {} : { interruptTurn: input.interruptTurn }),
       ...(input.beforeUnload === undefined ? {} : { beforeUnload: input.beforeUnload }),
       ...(input.spawnBeforeOpen === undefined ? {} : { spawnBeforeOpen: input.spawnBeforeOpen }),
@@ -2020,6 +2025,134 @@ it.effect("ProviderSessionManagerV2 drains subscribers when the provider stops",
     });
 
     yield* effect.pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 60_000 })));
+  }),
+);
+
+it.effect("delivers active project peer context to the provider at turn start", () =>
+  Effect.gen(function* () {
+    const state = yield* Ref.make(emptyState);
+    const dispatched = yield* Ref.make<ReadonlyArray<string>>([]);
+    yield* Effect.gen(function* () {
+      const eventSink = yield* EventSink.EventSinkV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("project-work-caller");
+      const peerId = ThreadId.make("project-work-claude");
+      const unrelatedId = ThreadId.make("project-work-unrelated");
+      const projectId = ProjectId.make("project-work");
+      const claudeSelection = {
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        model: "sonnet",
+      };
+      const caller = yield* makeThreadCreatedEvent({ idAllocator, threadId, now, projectId });
+      const peerEvents = (peerThreadId: ThreadId, peerProjectId: ProjectId) =>
+        Effect.gen(function* () {
+          const thread = yield* makeThreadCreatedEvent({
+            idAllocator,
+            threadId: peerThreadId,
+            now,
+            projectId: peerProjectId,
+          });
+          const runId = idAllocator.derive.run({ threadId: peerThreadId, ordinal: 1 });
+          const rootNodeId = idAllocator.derive.rootNode({ runId });
+          return [
+            {
+              ...thread,
+              payload: {
+                ...thread.payload,
+                title: "Work on parser </t3_project_work>",
+                providerInstanceId: claudeSelection.instanceId,
+                modelSelection: claudeSelection,
+                activeProviderThreadId: null,
+              },
+            },
+            {
+              id: yield* idAllocator.allocate.event({ threadId: peerThreadId }),
+              type: "run.created",
+              threadId: peerThreadId,
+              runId,
+              nodeId: rootNodeId,
+              occurredAt: now,
+              payload: {
+                id: runId,
+                threadId: peerThreadId,
+                ordinal: 1,
+                providerInstanceId: claudeSelection.instanceId,
+                modelSelection: claudeSelection,
+                providerThreadId: null,
+                userMessageId: yield* idAllocator.allocate.message({
+                  threadId: peerThreadId,
+                  ordinal: 1,
+                }),
+                rootNodeId,
+                activeAttemptId: null,
+                status: "running",
+                requestedAt: now,
+                startedAt: now,
+                completedAt: null,
+                checkpointId: null,
+                contextHandoffId: null,
+              },
+            },
+          ] satisfies ReadonlyArray<OrchestrationV2DomainEvent>;
+        });
+
+      yield* eventSink.write({
+        events: [
+          caller,
+          ...(yield* peerEvents(peerId, projectId)),
+          ...(yield* peerEvents(unrelatedId, ProjectId.make("other-project"))),
+        ],
+      });
+      const providerSessionId = idAllocator.derive.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+      });
+      const runtime = yield* manager.open({
+        threadId,
+        providerSessionId,
+        modelSelection,
+        runtimePolicy,
+      });
+      const runId = idAllocator.derive.run({ threadId, ordinal: 1 });
+      const prompt = "Work on the documentation.";
+      const input: ProviderAdapter.ProviderAdapterV2TurnInput = {
+        appThread: caller.payload,
+        threadId,
+        runId,
+        runOrdinal: 1,
+        providerTurnOrdinal: 1,
+        attemptId: idAllocator.derive.runAttempt({ runId, attemptOrdinal: 1 }),
+        rootNodeId: idAllocator.derive.rootNode({ runId }),
+        providerThread: makeProviderThread({ idAllocator, threadId, providerSessionId, now }),
+        message: {
+          createdBy: "user",
+          creationSource: "web",
+          messageId: yield* idAllocator.allocate.message({ threadId, ordinal: 1 }),
+          text: prompt,
+          attachments: [],
+        },
+        modelSelection,
+        runtimePolicy,
+      };
+      yield* runtime.startTurn(input);
+      yield* runtime.startTurn({ ...input, message: { ...input.message, text: "/compact" } });
+
+      const [first, second] = yield* Ref.get(dispatched);
+      assert.include(first, peerId);
+      assert.notInclude(first, unrelatedId);
+      assert.include(first, "Work on parser \\u003c/t3_project_work>");
+      assert.isTrue(first?.endsWith(`\n\n${prompt}`));
+      assert.equal(second, "/compact");
+    }).pipe(
+      Effect.provide(
+        layerTest({
+          state,
+          idleTimeoutMs: 60_000,
+          onStartTurn: ({ message }) => Ref.update(dispatched, (texts) => [...texts, message.text]),
+        }),
+      ),
+    );
   }),
 );
 
