@@ -20,9 +20,14 @@ import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import { SpawnExecutableResolution } from "@t3tools/shared/shell";
+import * as SqlClient from "effect/sql/SqlClient";
 
+import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as ProviderRegistry from "./ProviderRegistry.ts";
+import * as AutomaticProviderUpdates from "./AutomaticProviderUpdates.ts";
 import * as ModelManifest from "./ModelManifest.ts";
 import * as ProviderMaintenanceRunner from "./providerMaintenanceRunner.ts";
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
@@ -78,6 +83,19 @@ const baseProvider: ServerProvider = {
   models: [],
   slashCommands: [],
   skills: [],
+};
+
+const awaitingUpdate: ServerProvider = {
+  ...baseProvider,
+  versionAdvisory: {
+    status: "behind_latest",
+    currentVersion: "0.0.0",
+    latestVersion: "1.0.0",
+    canUpdate: true,
+    updateCommand: "npm install -g @openai/codex@latest",
+    checkedAt: baseProvider.checkedAt,
+    message: null,
+  },
 };
 
 const baseNativeCliProvider: ServerProvider = {
@@ -277,6 +295,132 @@ function layerFailingLatestLookupAfterFirst() {
 }
 
 describe("providerMaintenanceRunner", () => {
+  it("only considers enabled, installed providers with supported official updates", () => {
+    const now = Date.parse("2026-04-11T00:00:00Z");
+    const { isAutomaticUpdateCandidate } = AutomaticProviderUpdates;
+    assert.strictEqual(isAutomaticUpdateCandidate(awaitingUpdate, now), true);
+    assert.strictEqual(
+      isAutomaticUpdateCandidate({ ...awaitingUpdate, enabled: false }, now),
+      false,
+    );
+    assert.strictEqual(
+      isAutomaticUpdateCandidate({ ...awaitingUpdate, installed: false }, now),
+      false,
+    );
+    assert.strictEqual(
+      isAutomaticUpdateCandidate(
+        {
+          ...awaitingUpdate,
+          versionAdvisory: { ...awaitingUpdate.versionAdvisory!, canUpdate: false },
+        },
+        now,
+      ),
+      false,
+    );
+    assert.strictEqual(
+      isAutomaticUpdateCandidate(
+        {
+          ...awaitingUpdate,
+          compatibilityAdvisory: {
+            status: "supported",
+            latestVersionStatus: "broken",
+            message: null,
+            recommendedVersion: null,
+            recommendedRange: null,
+          },
+        },
+        now,
+      ),
+      false,
+    );
+  });
+
+  it.effect("runs automatic maintenance on the next interval after active work finishes", () => {
+    const updates: ProviderInstanceId[] = [];
+    return Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`CREATE TABLE orchestration_v2_projection_runs (status TEXT NOT NULL)`;
+      yield* sql`CREATE TABLE orchestration_v2_thread_launch_workflows (
+        status TEXT NOT NULL, message_committed INTEGER NOT NULL
+      )`;
+      yield* sql`INSERT INTO orchestration_v2_projection_runs VALUES ('running')`;
+      const { registry } = yield* makeRegistry([
+        awaitingUpdate,
+        { ...awaitingUpdate, instanceId: NATIVE_CLI_INSTANCE_ID, enabled: false },
+      ]);
+      const scheduler = AutomaticProviderUpdates.layer.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            ServerSettings.layerTest({}),
+            Layer.mock(BackgroundPolicy.BackgroundPolicy)({
+              shouldRunOpportunisticWork: Effect.succeed(true),
+            }),
+            Layer.succeed(ProviderRegistry.ProviderRegistry, registry),
+            Layer.succeed(ProviderMaintenanceRunner.ProviderMaintenanceRunner, {
+              updateProvider: (target) =>
+                Effect.sync(() => {
+                  if (typeof target !== "string" && target.instanceId)
+                    updates.push(target.instanceId);
+                  return { providers: [] };
+                }),
+            }),
+          ),
+        ),
+      );
+      yield* Effect.gen(function* () {
+        yield* TestClock.adjust("1 minute");
+        assert.deepStrictEqual(updates, []);
+        yield* sql`DELETE FROM orchestration_v2_projection_runs`;
+        yield* sql`INSERT INTO orchestration_v2_thread_launch_workflows VALUES ('running', 0)`;
+        yield* TestClock.adjust("5 minutes");
+        assert.deepStrictEqual(updates, []);
+        yield* sql`UPDATE orchestration_v2_thread_launch_workflows SET message_committed = 1`;
+        yield* TestClock.adjust("5 minutes");
+        assert.deepStrictEqual(updates, [CODEX_INSTANCE_ID]);
+      }).pipe(Effect.provide(scheduler));
+    }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" })));
+  });
+
+  it.effect.each([
+    { mode: "idle", allowed: [true, true], version: "0.0.0", expectedUpdates: 1 },
+    { mode: "work started", allowed: [true, false], version: "0.0.0", expectedUpdates: 0 },
+    { mode: "already busy", allowed: [false], version: "0.0.0", expectedUpdates: 0 },
+    { mode: "already current", allowed: [true, true], version: "1.0.0", expectedUpdates: 0 },
+  ])(
+    "uses the official installer only after an idle recheck: $mode",
+    ({ allowed, version, expectedUpdates }) => {
+      const calls: string[] = [];
+      let gate = 0;
+      const canRunAutomatically = Effect.sync(() => allowed[gate++] === true);
+      return Effect.gen(function* () {
+        const { registry } = yield* makeRegistry(
+          { ...baseProvider, version },
+          {
+            installedVersionAfterUpdate: "1.0.0",
+          },
+        );
+        const updater = yield* makeTestRunner(registry);
+        yield* updater.updateProvider({
+          provider: CODEX_DRIVER,
+          instanceId: CODEX_INSTANCE_ID,
+          canRunAutomatically,
+        });
+        assert.strictEqual(calls.length, expectedUpdates);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            layerNonWindowsPlatform,
+            layerLatestVersionHttpClient("1.0.0"),
+            layerMockSpawner((command) => {
+              calls.push(command);
+              return { stdout: "updated" };
+            }),
+          ),
+        ),
+      );
+    },
+  );
+
   it.effect("runs the allowlisted provider update command and records success", () => {
     const calls: Array<{ command: string; args: ReadonlyArray<string> }> = [];
     return Effect.gen(function* () {

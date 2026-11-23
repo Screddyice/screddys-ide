@@ -4419,6 +4419,7 @@ describe("AcpAdapterV2", () => {
         endpoint: "http://127.0.0.1:43123/mcp",
         authorizationHeader: "Bearer target-thread-token",
         browserToolsAvailable: true,
+        computerUseCommand: "/Applications/CuaDriver.app/Contents/MacOS/cua-driver",
       });
       const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
         runtimeMode: "full-access",
@@ -4483,6 +4484,13 @@ describe("AcpAdapterV2", () => {
               { name: "T3_ACP_MCP_ENDPOINT", value: "http://127.0.0.1:43123/mcp" },
               { name: "T3_ACP_MCP_AUTHORIZATION", value: "Bearer target-thread-token" },
             ],
+          },
+          {
+            type: "stdio",
+            name: "screddy-computer-use",
+            command: "/Applications/CuaDriver.app/Contents/MacOS/cua-driver",
+            args: ["mcp"],
+            env: [],
           },
         ],
       });

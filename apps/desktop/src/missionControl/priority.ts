@@ -12,7 +12,7 @@ const criteria = [
   "Immediate: urgent intervention or an overdue high-impact action.",
 ];
 
-export function prioritySignal(item: MissionControlItem, today: string) {
+function prioritySignal(item: MissionControlItem, today: string) {
   if (!taskSources.has(item.source) || isRestrictedMissionControlTask(item)) return null;
   const route = routingCandidate(item);
   const due = item.due === null ? "unscheduled" : item.due <= today ? "due_now" : "upcoming";

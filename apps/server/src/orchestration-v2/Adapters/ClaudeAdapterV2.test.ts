@@ -552,9 +552,32 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
     browserToolsAvailable: true,
   });
 
+  it("registers Computer Use without pre-approving desktop actions", () => {
+    const mcpSession = {
+      ...mcpSessionFor(ThreadId.make("thread-claude-computer-use")),
+      computerUseCommand: "/Applications/CuaDriver.app/Contents/MacOS/cua-driver",
+    };
+    const overrides = ClaudeAdapterV2.claudeMcpQueryOverrides({
+      mcpSession,
+      readOnlySandbox: false,
+    });
+    assert.deepEqual(overrides.mcpServers, {
+      ...T3_MCP_SERVERS,
+      "screddy-computer-use": {
+        type: "stdio",
+        command: mcpSession.computerUseCommand,
+        args: ["mcp"],
+      },
+    });
+    assert.deepEqual(overrides.allowedTools, [ClaudeAdapterV2.CLAUDE_T3_MCP_TOOL_WILDCARD]);
+  });
+
   it("pre-approves only read-only t3-code tools in a read-only sandbox", () => {
     const threadId = ThreadId.make("thread-claude-mcp-read-only");
-    const mcpSession = mcpSessionFor(threadId);
+    const mcpSession = {
+      ...mcpSessionFor(threadId),
+      computerUseCommand: "/Applications/CuaDriver.app/Contents/MacOS/cua-driver",
+    };
     const overrides = ClaudeAdapterV2.claudeMcpQueryOverrides({
       mcpSession,
       readOnlySandbox: true,

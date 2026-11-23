@@ -2292,7 +2292,7 @@ describe("orchestration v2 provider switching", () => {
     ),
   );
 
-  it.live("finishes earlier queued Codex turns before handing context to queued Claude", () =>
+  it.live("queues a model switch sent with steering and hands off context before the prompt", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const cwd = yield* checkpointWorkspace("queued-provider-switch");
@@ -2340,8 +2340,9 @@ describe("orchestration v2 provider switching", () => {
               text: `Prompt ${ordinal}`,
               attachments: [],
               modelSelection,
+              ...(ordinal === 4 ? { deliveryIntent: "steer" as const } : {}),
               dispatchMode: {
-                type: ordinal === 1 ? "start_immediately" : "queue_after_active",
+                type: ordinal === 1 || ordinal === 4 ? "start_immediately" : "queue_after_active",
               },
             });
           yield* orchestrator.dispatch({

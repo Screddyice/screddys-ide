@@ -842,6 +842,17 @@ function acpMcpContext(
   if (session === undefined) {
     return { servers: [], acpServers: [], httpServers: [] };
   }
+  const computerUseServers: ReadonlyArray<EffectAcpSchema.McpServer> =
+    session.computerUseCommand === undefined
+      ? []
+      : [
+          {
+            name: McpProviderSession.COMPUTER_USE_MCP_SERVER_NAME,
+            command: session.computerUseCommand,
+            args: McpProviderSession.COMPUTER_USE_MCP_ARGS,
+            env: [],
+          },
+        ];
   // codex-acp 1.2.0 and pi-acp drop injected HTTP servers, so HTTP is opt-in per flavor.
   return {
     servers: [
@@ -855,8 +866,9 @@ function acpMcpContext(
           { name: "T3_ACP_MCP_AUTHORIZATION", value: session.authorizationHeader },
         ],
       },
+      ...computerUseServers,
     ],
-    acpServers: [{ type: "acp", name: "t3-code", serverId: "t3-code" }],
+    acpServers: [{ type: "acp", name: "t3-code", serverId: "t3-code" }, ...computerUseServers],
     httpServers:
       mcpOverHttp === true
         ? [
@@ -866,6 +878,7 @@ function acpMcpContext(
               url: session.endpoint,
               headers: [{ name: "Authorization", value: session.authorizationHeader }],
             },
+            ...computerUseServers,
           ]
         : [],
     endpoint: session.endpoint,

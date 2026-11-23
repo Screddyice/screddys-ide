@@ -1902,9 +1902,15 @@ describe("CursorAdapterV2", () => {
       endpoint: "http://127.0.0.1:43123/mcp",
       authorizationHeader: "Bearer secret-cursor-mcp-token",
       browserToolsAvailable: true,
+      computerUseCommand: "/Applications/CuaDriver.app/Contents/MacOS/cua-driver",
     };
 
     assert.deepEqual(cursorMcpServers(mcpSession), {
+      "screddy-computer-use": {
+        type: "stdio",
+        command: mcpSession.computerUseCommand,
+        args: ["mcp"],
+      },
       "t3-code": {
         type: "http",
         url: "http://127.0.0.1:43123/mcp",
@@ -1930,6 +1936,7 @@ describe("CursorAdapterV2", () => {
       platform: "linux",
     });
     assert.deepEqual(options.mcpServers, cursorMcpServers(mcpSession));
+    assert.notProperty(cursorMcpServers(mcpSession, false), "screddy-computer-use");
 
     const logged = JSON.stringify(CursorAgentSdk.loggedCursorAgentOptions(options));
     assert.notInclude(logged, "secret-cursor-api-key");

@@ -549,6 +549,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.enableProviderUpdateChecks !== DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks
       ? ["Provider update checks"]
       : []),
+    ...(settings.autoInstallProviderUpdates !== DEFAULT_UNIFIED_SETTINGS.autoInstallProviderUpdates
+      ? ["Automatically update provider tools"]
+      : []),
     ...(settings.continueThreadsAfterServerUpdate !==
     DEFAULT_UNIFIED_SETTINGS.continueThreadsAfterServerUpdate
       ? ["Continue threads after restarts"]
@@ -673,6 +676,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       snoozePresets: DEFAULT_UNIFIED_SETTINGS.snoozePresets,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
       enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
+      autoInstallProviderUpdates: DEFAULT_UNIFIED_SETTINGS.autoInstallProviderUpdates,
       continueThreadsAfterServerUpdate: DEFAULT_UNIFIED_SETTINGS.continueThreadsAfterServerUpdate,
       backgroundActivity: DEFAULT_UNIFIED_SETTINGS.backgroundActivity,
       backgroundActivityProfile: DEFAULT_UNIFIED_SETTINGS.backgroundActivityProfile,
@@ -2047,6 +2051,22 @@ export function MaintenanceSettingsPanel() {
                 updateSettings({ enableProviderUpdateChecks: Boolean(checked) })
               }
               aria-label="Check provider versions"
+            />
+          }
+        />
+        <SettingsRow
+          {...searchableSetting("auto-install-provider-updates")}
+          serverScoped
+          settingKeys={["autoInstallProviderUpdates"]}
+          description="Install supported updates for enabled provider tools when the environment is idle. Requires provider update checks."
+          control={
+            <ScopedSwitch
+              settingKeys={["autoInstallProviderUpdates"]}
+              checked={settings.autoInstallProviderUpdates}
+              onCheckedChange={(checked) =>
+                updateSettings({ autoInstallProviderUpdates: Boolean(checked) })
+              }
+              aria-label="Automatically update provider tools"
             />
           }
         />
