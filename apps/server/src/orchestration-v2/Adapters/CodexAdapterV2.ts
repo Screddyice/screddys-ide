@@ -1433,7 +1433,7 @@ function codexThreadRuntimeParams(input: {
         : {
             [`mcp_servers.${McpProviderSession.COMPUTER_USE_MCP_SERVER_NAME}`]: {
               command: mcpSession.computerUseCommand,
-              args: [...McpProviderSession.COMPUTER_USE_MCP_ARGS],
+              args: [...(mcpSession.computerUseArgs ?? McpProviderSession.COMPUTER_USE_MCP_ARGS)],
             },
           }),
       // One app-server serves many threads, so the id goes in per-thread shell config, not its env.

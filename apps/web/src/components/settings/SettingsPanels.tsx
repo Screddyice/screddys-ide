@@ -534,6 +534,10 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.composerRichTextEnabled !== DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled
       ? ["Rich text composer"]
       : []),
+    ...(settings.composerPromptSuggestionsEnabled !==
+    DEFAULT_UNIFIED_SETTINGS.composerPromptSuggestionsEnabled
+      ? ["Prompt suggestions"]
+      : []),
     ...(settings.sendShortcut !== DEFAULT_UNIFIED_SETTINGS.sendShortcut ? ["Send shortcut"] : []),
     ...(settings.followUpBehavior !== DEFAULT_UNIFIED_SETTINGS.followUpBehavior
       ? ["Follow-up behavior"]
@@ -659,6 +663,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       proactivePanelsEnabled: DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerRichTextEnabled: DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled,
+      composerPromptSuggestionsEnabled: DEFAULT_UNIFIED_SETTINGS.composerPromptSuggestionsEnabled,
       sendShortcut: DEFAULT_UNIFIED_SETTINGS.sendShortcut,
       followUpBehavior: DEFAULT_UNIFIED_SETTINGS.followUpBehavior,
       toolCallVisibility: DEFAULT_UNIFIED_SETTINGS.toolCallVisibility,
@@ -1095,6 +1100,19 @@ export function ChatSettingsPanel() {
                 updateSettings({ composerRichTextEnabled: Boolean(checked) })
               }
               aria-label="Rich text composer"
+            />
+          }
+        />
+        <SettingsRow
+          {...searchableSetting("composer-prompt-suggestions")}
+          description="Show a follow-up after a completed reply. Press Tab to add it to your draft."
+          control={
+            <Switch
+              checked={settings.composerPromptSuggestionsEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ composerPromptSuggestionsEnabled: Boolean(checked) })
+              }
+              aria-label="Prompt suggestions"
             />
           }
         />

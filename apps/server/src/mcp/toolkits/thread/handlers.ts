@@ -23,6 +23,7 @@ import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as ScheduledTasks from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { queuedRunsInDeliveryOrder } from "../../../orchestration-v2/QueuedRunOrder.ts";
 import { ThreadToolkit } from "./tools.ts";
+import { makeProjectWork } from "./projectWork.ts";
 
 function queueEntry(
   projection: Pick<OrchestrationV2ThreadProjection, "runs" | "messages">,
@@ -90,7 +91,11 @@ const writesThread = <P extends { readonly threadId?: ThreadId | undefined }, A,
   handle: (params: P) => Effect.Effect<A, E, R>,
 ) => McpToolAccess.writesThreads((params: P) => [params.threadId], handle);
 
-export const layer = McpToolAccess.toLayer(ThreadToolkit, {
+const handlers = (
+  projectWork: Effect.Success<typeof makeProjectWork>,
+): McpToolAccess.Handlers<typeof ThreadToolkit.tools> => ({
+  t3_project_work: McpToolAccess.readsAsCaller(() => projectWork.read()),
+  t3_project_claim: McpToolAccess.actsAsCaller((input) => projectWork.change(input)),
   run_scheduled_task_now: McpToolAccess.writesEnvironment((input) =>
     Effect.gen(function* () {
       const scheduler = yield* ScheduledTasks.ScheduledTaskService;
@@ -367,3 +372,5 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
     }),
   ),
 });
+
+export const layer = McpToolAccess.toLayer(ThreadToolkit, Effect.map(makeProjectWork, handlers));

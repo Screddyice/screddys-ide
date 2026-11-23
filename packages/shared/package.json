@@ -343,6 +343,10 @@
       "types": "./src/chatList.ts",
       "import": "./src/chatList.ts"
     },
+    "./ComputerUseActivity": {
+      "types": "./src/ComputerUseActivity.ts",
+      "import": "./src/ComputerUseActivity.ts"
+    },
     "./nodeRuntime": {
       "types": "./src/nodeRuntime.ts",
       "import": "./src/nodeRuntime.ts"

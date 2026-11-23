@@ -2,7 +2,7 @@ import * as Schema from "effect/Schema";
 import type { PreviewCaptureFailureEncoded } from "./previewCapture.ts";
 
 import { SnapShotSource } from "./chatAttachment.ts";
-import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { EnvironmentId, NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { BrowserProfileId } from "./browserProfile.ts";
 import type {
   BrowserImportResult,
@@ -1246,6 +1246,45 @@ export const MissionControlJevSetupResultSchema = Schema.Union([
 ]);
 export type MissionControlJevSetupResult = typeof MissionControlJevSetupResultSchema.Type;
 
+const DesktopTokenUsagePeriod = Schema.Struct({
+  totalTokens: NonNegativeInt,
+  uncachedInputTokens: NonNegativeInt,
+  cachedInputTokens: NonNegativeInt,
+  cacheCreationTokens: NonNegativeInt,
+  outputTokens: NonNegativeInt,
+  reasoningTokens: NonNegativeInt,
+  costUsd: Schema.NullOr(Schema.Number),
+});
+export type DesktopTokenUsagePeriod = typeof DesktopTokenUsagePeriod.Type;
+
+const DesktopTokenUsageLabel = Schema.String.check(Schema.isMaxLength(120));
+export const DesktopTokenUsageSummary = Schema.Struct({
+  today: DesktopTokenUsagePeriod,
+  week: DesktopTokenUsagePeriod,
+  month: DesktopTokenUsagePeriod,
+  providers: Schema.Array(
+    Schema.Struct({
+      label: DesktopTokenUsageLabel,
+      totalTokens: NonNegativeInt,
+      models: Schema.Array(
+        Schema.Struct({ label: DesktopTokenUsageLabel, totalTokens: NonNegativeInt }),
+      ).check(Schema.isMaxLength(5)),
+    }),
+  ).check(Schema.isMaxLength(12)),
+  records: NonNegativeInt,
+  sessions: NonNegativeInt,
+  isPartial: Schema.Boolean,
+  hasUnpricedUsage: Schema.Boolean,
+});
+export type DesktopTokenUsageSummary = typeof DesktopTokenUsageSummary.Type;
+
+export const DesktopTokenUsageMenuState = Schema.Struct({
+  loading: Schema.Boolean,
+  summary: Schema.NullOr(DesktopTokenUsageSummary),
+});
+export type DesktopTokenUsageMenuState = typeof DesktopTokenUsageMenuState.Type;
+export type DesktopTokenUsageMenuAction = "open" | "refresh";
+
 export interface DesktopBridge {
   getMissionControlJevStatus?: () => Promise<MissionControlJevStatus>;
   setMissionControlJevKey?: (key: string | null) => Promise<MissionControlJevSetupResult>;
@@ -1262,6 +1301,8 @@ export interface DesktopBridge {
   getRelayTelemetryEnabled: () => boolean;
   getPathForFile: (file: File) => string;
   getClientPlatform: () => string;
+  setTokenUsageMenu?: (state: DesktopTokenUsageMenuState) => Promise<void>;
+  onTokenUsageMenuAction?: (listener: (action: DesktopTokenUsageMenuAction) => void) => () => void;
   setNotificationBadge: (badge: { count: number; image: string | null }) => Promise<void>;
   onNotificationBadgeClear: (listener: () => void) => () => void;
   onTrackpadScrollBegin: (listener: () => void) => () => void;
