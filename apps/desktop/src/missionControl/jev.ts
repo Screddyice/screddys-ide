@@ -1,6 +1,5 @@
-// @effect-diagnostics nodeBuiltinImport:off -- Invokes the owner's dedicated JEV MCP launcher.
+// @effect-diagnostics nodeBuiltinImport:off -- Invokes the locally configured JEV MCP launcher.
 import * as NodeChildProcess from "node:child_process";
-import * as NodePath from "node:path";
 
 import { obj } from "./sources.ts";
 
@@ -10,12 +9,13 @@ type Question =
 
 export function decideMissionControl(
   home: string,
+  command: string,
   text: string,
   questions: Readonly<Record<string, Question>>,
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const child = NodeChildProcess.execFile(
-      NodePath.join(home, ".local", "bin", "jev-mcp"),
+      command,
       [],
       {
         env: { HOME: home, PATH: "/opt/homebrew/bin:/usr/bin:/bin" },

@@ -216,7 +216,7 @@ async function readPriorities(
     today,
     team.lanes,
   );
-  const scores = await scoreMissionControlPriorities(home, items, today, now);
+  const scores = await scoreMissionControlPriorities(home, items, today, now, bindings.jevCommand);
   return {
     configured: true,
     fetchedAt: DateTime.formatIso(

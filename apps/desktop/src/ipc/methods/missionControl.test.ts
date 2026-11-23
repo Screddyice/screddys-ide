@@ -23,6 +23,7 @@ vi.mock("../../missionControl/sources.ts", async (importOriginal) => ({
     tasks: "test",
     srcosTenant: "test",
     srcosCredentialFile: "/fixture/srcos.json",
+    jevCommand: "/fixture/jev-launcher",
   })),
   connector: vi.fn(),
   readMail: vi.fn(),
@@ -108,7 +109,7 @@ it("returns focused priorities while the aggregate mail read is still pending", 
 it("ranks live-feed tasks with bounded JEV signals and preserves deadlines", async () => {
   vi.mocked(decideMissionControl)
     .mockClear()
-    .mockImplementation(async (_home, signals) => ({
+    .mockImplementation(async (_home, _command, signals) => ({
       answers: Object.fromEntries(
         signals
           .split("\n")
@@ -141,7 +142,8 @@ it("ranks live-feed tasks with bounded JEV signals and preserves deadlines", asy
   expect(decideMissionControl).toHaveBeenCalledTimes(1);
   const params = vi.mocked(decideMissionControl).mock.calls[0]!;
   expect(params[0]).toBe(home);
-  expect(params[1]).not.toMatch(/private@example|internal fixture detail|confidential|2026-11-16/);
+  expect(params[1]).toBe("/fixture/jev-launcher");
+  expect(params[2]).not.toMatch(/private@example|internal fixture detail|confidential|2026-11-16/);
 
   await readMissionControl(home, home, request, now);
   expect(decideMissionControl).toHaveBeenCalledTimes(1);
@@ -169,4 +171,22 @@ it("leaves workspace sources disabled without explicit local bindings", async ()
   expect(readLinear).not.toHaveBeenCalled();
   expect(readSrcos).not.toHaveBeenCalled();
   expect(sharedContext).not.toHaveBeenCalled();
+});
+
+it("uses local priorities without a configured JEV command", async () => {
+  const configured = (await bindingsAt("/fixture"))!;
+  vi.mocked(bindingsAt).mockResolvedValueOnce({ ...configured, jevCommand: undefined });
+  vi.mocked(decideMissionControl).mockClear();
+  vi.mocked(readTasks).mockResolvedValue({
+    items: [{ ...item("tasks"), title: "Fix the build failure" }],
+  });
+  const response = await readMissionControl(
+    "/fixture",
+    "/fixture/local-priority",
+    { view: "priorities", filter: "tasks", refresh: false },
+    Date.parse("2026-11-16T22:00:00Z"),
+  );
+  expect(response.items).toHaveLength(1);
+  expect(response.priorityScoredCount).toBe(0);
+  expect(decideMissionControl).not.toHaveBeenCalled();
 });
