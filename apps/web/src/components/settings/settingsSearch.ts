@@ -507,7 +507,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "prompt-suggestions-beta",
-    title: "Suggest next prompt",
+    title: "Provider-generated prompt suggestions",
     to: "/settings/labs",
     scope: "environment",
     searchTerms: ["beta tab autocomplete predict next message claude codex ghost text"],
@@ -726,6 +726,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Rich text composer",
     to: "/settings/chat",
     searchTerms: ["composer rich text tiptap bold italic markdown styled wysiwyg"],
+  },
+  {
+    id: "composer-prompt-suggestions",
+    title: "Prompt suggestions",
+    to: "/settings/chat",
+    searchTerms: ["composer next message follow-up tab autocomplete ghost text"],
   },
   {
     id: "send-shortcut",
