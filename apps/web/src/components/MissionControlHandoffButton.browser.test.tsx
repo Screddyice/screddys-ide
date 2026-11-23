@@ -385,10 +385,11 @@ it("launches Grok Bot when a main assistant is not configured", async () => {
   await using screen = await render(<Harness />);
   using clip = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
   const action = screen.getByRole("button", {
-    name: "Go to Grok for " + item.title,
+    name: "Go to Grok Bot for " + item.title,
   });
   await expect.element(action).toBeVisible();
-  await expect.element(action.getByText("Go to Grok")).toBeVisible();
+  await expect.element(action.getByText("Go to Grok Bot")).toBeVisible();
+  expect(action.element().querySelector("img")?.getAttribute("src")).toMatch(/grokbot/);
   expect(openExternal).not.toHaveBeenCalled();
   await action.click();
   await expect.poll(() => openExternal.mock.calls.length).toBe(1);
@@ -405,7 +406,7 @@ it("opens the named assistant with the task typed into its message box", async (
   });
   await using screen = await render(<Harness />);
   using clip = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
-  const action = screen.getByRole("button", { name: "Go to Grok for " + item.title });
+  const action = screen.getByRole("button", { name: "Go to Grok Bot for " + item.title });
   await expect.element(action.getByText("Test Assistant")).toBeVisible();
   await action.click();
   await expect.poll(() => bridge.openExternal.mock.calls.length).toBe(1);
