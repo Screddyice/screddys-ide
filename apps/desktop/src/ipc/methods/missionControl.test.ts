@@ -39,9 +39,21 @@ vi.mock("../../missionControl/srcos.ts", () => ({
   readSrcos: vi.fn(async () => ({ items: [], context: "SRCOS guidance" })),
 }));
 
-vi.mock("../../missionControl/jev.ts", () => ({
-  decideMissionControl: vi.fn(async () => ({})),
-}));
+vi.mock("../../missionControl/jev.ts", () => {
+  const decideMissionControl = vi.fn<
+    typeof import("../../missionControl/jev.ts").decideMissionControl
+  >(async () => ({}));
+  return {
+    decideMissionControl,
+    launcherJev: (home: string, command: string) => ({
+      revision: JSON.stringify([home, command]),
+      decide: (
+        text: Parameters<typeof decideMissionControl>[2],
+        questions: Parameters<typeof decideMissionControl>[3],
+      ) => decideMissionControl(home, command, text, questions),
+    }),
+  };
+});
 
 function item(source: MissionControlItem["source"]) {
   return {

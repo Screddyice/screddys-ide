@@ -137,6 +137,8 @@ export const CANCEL_PROVIDER_AUTH_CALLBACK_CHANNEL = "desktop:cancel-provider-au
 export const TAKE_LEGACY_LOCAL_STORAGE_CHANNEL = "desktop:take-legacy-local-storage";
 export const COMPLETE_LEGACY_LOCAL_STORAGE_CHANNEL = "desktop:complete-legacy-local-storage";
 
+export const GET_MISSION_CONTROL_JEV_STATUS_CHANNEL = "desktop:get-mission-control-jev-status";
+export const SET_MISSION_CONTROL_JEV_KEY_CHANNEL = "desktop:set-mission-control-jev-key";
 export const GET_MISSION_CONTROL_CHANNEL = "desktop:get-mission-control";
 export const GET_MISSION_CONTROL_REPLY_CHANNEL = "desktop:get-mission-control-reply";
 export const RUN_MISSION_CONTROL_ACTION_CHANNEL = "desktop:run-mission-control-action";

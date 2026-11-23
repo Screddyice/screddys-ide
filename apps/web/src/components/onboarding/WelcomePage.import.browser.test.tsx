@@ -16,9 +16,10 @@ import {
 } from "@t3tools/contracts";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { expect, it, vi } from "vite-plus/test";
+import { page } from "vite-plus/test/browser";
 
 import "~/index.css";
-import { act, render } from "../../../test/render";
+import { act, render, stubGlobal } from "../../../test/render";
 
 type SessionResult = AsyncResult.AsyncResult<AuthSessionState, Error>;
 type Project = { id: ProjectId; environmentId: EnvironmentId; workspaceRoot: string };
@@ -739,3 +740,40 @@ it("says the phone is set up only once this computer is shared with the signed-i
   await vi.waitFor(() => expect(pageText()).toContain("Your phone can reach this computer."));
   expect(pageText()).not.toContain("Check T3 Connect");
 });
+
+it.each(["enable", "skip"] as const)(
+  "can %s JEV before finishing first-run setup",
+  async (action) => {
+    using _now = setup();
+    const setMissionControlJevKey = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, error: "OpenRouter rejected the key." })
+      .mockResolvedValueOnce({ ok: true });
+    using _bridge = stubGlobal("desktopBridge", {
+      getMissionControlJevStatus: async () => "disabled",
+      getLocalEnvironmentEnabled: () => true,
+      getLocalEnvironmentBootstraps: () => [],
+      setMissionControlJevKey,
+    });
+    await using _screen = await mountWelcome();
+    await click("Import 2 projects and start");
+    await expect.element(page.getByRole("dialog", { name: "Set up JEV" })).toBeVisible();
+    expect(state.onDone).not.toHaveBeenCalled();
+    if (action === "skip") {
+      await page.getByRole("button", { name: "Skip", exact: true }).click();
+      expect(setMissionControlJevKey).not.toHaveBeenCalled();
+    } else {
+      const field = page.getByLabelText("OpenRouter API key");
+      await field.fill("example-credential-only");
+      await page.getByRole("button", { name: "Enable JEV" }).click();
+      await expect
+        .element(page.getByRole("alert"))
+        .toHaveTextContent("OpenRouter rejected the key.");
+      expect(state.onDone).not.toHaveBeenCalled();
+      await field.fill("replacement-fixture-only");
+      await page.getByRole("button", { name: "Enable JEV" }).click();
+      expect(setMissionControlJevKey).toHaveBeenLastCalledWith("replacement-fixture-only");
+    }
+    await vi.waitFor(() => expect(state.onDone).toHaveBeenCalledOnce());
+  },
+);

@@ -226,6 +226,10 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.invoke(IpcChannels.GET_MISSION_CONTROL_AGENT_ACTIVITY_CHANNEL, refresh),
   routeMissionControlItems: (requests) =>
     ipcRenderer.invoke(IpcChannels.ROUTE_MISSION_CONTROL_ITEMS_CHANNEL, requests),
+  getMissionControlJevStatus: () =>
+    ipcRenderer.invoke(IpcChannels.GET_MISSION_CONTROL_JEV_STATUS_CHANNEL),
+  setMissionControlJevKey: (key) =>
+    ipcRenderer.invoke(IpcChannels.SET_MISSION_CONTROL_JEV_KEY_CHANNEL, key),
   getMissionControl: (request) =>
     ipcRenderer.invoke(IpcChannels.GET_MISSION_CONTROL_CHANNEL, request),
   getMissionControlReply: (itemId) =>

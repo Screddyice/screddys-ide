@@ -5,7 +5,7 @@ import type { MissionControlHandoff, MissionControlHandoffRequest } from "@t3too
 
 import { isGrokBotConversationUrl } from "../electron/GrokBotLink.ts";
 import { isRestrictedText } from "./context.ts";
-import { decideMissionControl } from "./jev.ts";
+import { launcherJev, type JevDecider } from "./jev.ts";
 import { bindingsAt, obj } from "./sources.ts";
 
 const criteria = {
@@ -189,6 +189,7 @@ export async function routeItems(
   home: string,
   baseDir: string,
   input: readonly MissionControlHandoffRequest[],
+  openRouter?: JevDecider,
 ): Promise<readonly MissionControlHandoff[]> {
   const bindings = await bindingsAt(baseDir);
   const requests = input.map((request) =>
@@ -197,9 +198,8 @@ export async function routeItems(
       : request,
   );
   const command = bindings?.jevCommand;
-  const decisions = command
-    ? await routeWithJev(home, command, requests)
-    : requests.map(localRoute);
+  const jev = openRouter ?? (command ? launcherJev(home, command) : undefined);
+  const decisions = jev ? await routeWithJev(jev, requests) : requests.map(localRoute);
   const mainBot: Record<string, unknown> = decisions.includes("grok")
     ? await NodeFSP.readFile(NodePath.join(baseDir, "mission-control.json"), "utf8")
         .then((raw) => obj(obj(JSON.parse(raw)).grokBot))
@@ -222,11 +222,10 @@ export async function routeItems(
 }
 
 async function routeWithJev(
-  home: string,
-  command: string,
+  jev: JevDecider,
   requests: readonly MissionControlHandoffRequest[],
 ): Promise<readonly Route[]> {
-  const key = (signal: string) => JSON.stringify([home, command, signal]);
+  const key = (signal: string) => JSON.stringify([jev.revision, signal]);
   const signals = requests.map(routingCandidate);
   const missing = [
     ...new Set(
@@ -235,9 +234,7 @@ async function routeWithJev(
   ];
   for (let i = 0; i < missing.length; i += 10) {
     const batch = missing.slice(i, i + 10);
-    const decisions = decideMissionControl(
-      home,
-      command,
+    const decisions = jev.decide(
       batch.map((signal, index) => `route_${index}: ${signal}`).join("\n"),
       Object.fromEntries(
         batch.map((signal, index) => [
@@ -259,7 +256,10 @@ async function routeWithJev(
             const kind = pickRoute(data, `route_${index}`);
             return Object.hasOwn(routingChoices(signal), kind) ? kind : "needs_review";
           },
-          () => "unavailable",
+          () => {
+            routes.delete(cacheKey);
+            return "unavailable";
+          },
         ),
       );
     });

@@ -7,6 +7,21 @@ type Question =
   | { type: "choice"; instructions: string; criteria: Readonly<Record<string, string>> }
   | { type: "score"; instructions: string; criteria: readonly string[] };
 
+export type JevDecider = {
+  readonly revision: string;
+  readonly decide: (
+    text: string,
+    questions: Readonly<Record<string, Question>>,
+  ) => Promise<unknown>;
+};
+
+export function launcherJev(home: string, command: string): JevDecider {
+  return {
+    revision: JSON.stringify([home, command]),
+    decide: (text, questions) => decideMissionControl(home, command, text, questions),
+  };
+}
+
 export function decideMissionControl(
   home: string,
   command: string,
