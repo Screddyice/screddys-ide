@@ -3,10 +3,17 @@ import {
   type DesktopTokenUsagePeriod,
   type DesktopTokenUsageSummary,
 } from "@t3tools/contracts";
+import { makeWindow } from "@t3tools/shared/usageFormat";
 import { isCompatibleUsageContractVersion, type MergedUsage } from "@t3tools/shared/usageMerge";
 
 import { mergeAnsweredUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { PROVIDER_PRESENTATION } from "../usage/usageProviders";
+
+/** The window the menu bar reports; readers of the same window share one usage fetch. */
+export function currentUsageRange() {
+  const now = new Date();
+  return { month: makeWindow(30, now), weekStart: makeWindow(7, now).sinceDay };
+}
 
 function period(usage: MergedUsage): DesktopTokenUsagePeriod {
   return {

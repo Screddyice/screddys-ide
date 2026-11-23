@@ -13,12 +13,16 @@ import type {
 } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRightIcon, RefreshCwIcon } from "lucide-react";
+import { formatTokens } from "@t3tools/shared/usageFormat";
 import { useEffect, useState } from "react";
 
 import { useClientSettings } from "../hooks/useSettings";
 import { cn } from "../lib/utils";
 import { formatDayAwareTimestamp } from "../timestampFormat";
 import { useEnvironmentProviders, type EnvironmentPresentation } from "../state/environments";
+import { mergeAnsweredUsage, useUsage } from "../state/usage";
+import { currentUsageRange } from "./desktop/desktopUsageSnapshot";
+import { summarizeRunningAgents } from "./MissionControl.logic";
 import { Button } from "./ui/button";
 
 const providerLabels = {
@@ -154,6 +158,9 @@ export function MissionControlAgentActivity({
   const [feed, setFeed] = useState<{ revision: number; data?: AgentActivity; error: boolean }>();
   const providerSnapshots = useEnvironmentProviders();
   const timeFormat = useClientSettings((settings) => settings.timestampFormat);
+  // Recomputed each render so "today" rolls over at midnight; same window key as the menu bar.
+  const usageRange = currentUsageRange();
+  const usage = useUsage(usageRange.month);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Starts and cleans up a read from the desktop account feeds.
   useEffect(() => {
@@ -233,6 +240,11 @@ export function MissionControlAgentActivity({
       (provider === "all" || row.provider === provider) &&
       (!activeOnly || statuses[row.status][2] < 3),
   );
+  const todayUsage = usage.environments.some(({ summary }) => summary !== null)
+    ? mergeAnsweredUsage(usage.environments, (bucket) => bucket.day === usageRange.month.untilDay)
+        .providers
+    : null;
+  const runningSummary = summarizeRunningAgents(allRows, todayUsage);
   const sourceRows = (feed?.data?.sources ?? []).filter(
     (source) => provider === "all" || provider === source.provider,
   );
@@ -261,6 +273,25 @@ export function MissionControlAgentActivity({
           </Button>
         )}
       </div>
+      {runningSummary.length > 0 && (
+        <ul aria-label="Running agents and tokens today" className="flex flex-wrap gap-2">
+          {runningSummary.map(({ provider: kind, running, todayTokens }) => (
+            <li
+              key={kind}
+              className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground"
+            >
+              <span className="font-medium text-foreground">{providerLabels[kind]}</span>
+              {" · "}
+              <span className={cn("tabular-nums", running > 0 && "text-info-foreground")}>
+                {running} running
+              </span>
+              {todayTokens !== null && (
+                <span className="tabular-nums"> · {formatTokens(todayTokens)} tokens today</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="flex flex-wrap items-center gap-2" aria-label="Agent provider filters">
         {(["all", ...Object.keys(providerLabels)] as const).map((key) => {
           const id = key as typeof provider;
