@@ -165,6 +165,33 @@ function taskBrief(item: MissionControlItem) {
   ].join("\n");
 }
 
+const GROK_PROMPT_MAX_LENGTH = 1000;
+// Grok Bot refuses prefilled text with characters outside these classes (for example
+// zero-width or bidi controls), so drop them instead of losing the whole prompt.
+const GROK_PROMPT_DISALLOWED = /[^\p{L}\p{M}\p{N}\p{P}\p{S}\p{Z}\r\n\t]/gu;
+
+/** Turns a configured bot conversation link into a link that fills that bot's message box. */
+export function grokBotPromptUrl(conversationUrl: string, text: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(conversationUrl);
+  } catch {
+    return null;
+  }
+  const id = url.searchParams.get("id");
+  if (url.protocol !== "grokbot:" || url.pathname !== "/v1/agent" || !id) return null;
+  const chars = [...text.replace(GROK_PROMPT_DISALLOWED, "")];
+  const clipped =
+    chars.length > GROK_PROMPT_MAX_LENGTH
+      ? chars.slice(0, GROK_PROMPT_MAX_LENGTH - 1).join("") + "…"
+      : chars.join("");
+  if (!clipped.trim()) return null;
+  const prompt = new URL("grokbot://app/v1/prompt");
+  prompt.searchParams.set("id", id);
+  prompt.searchParams.set("text", clipped);
+  return prompt.href;
+}
+
 export function useMissionControlHandoffs(
   bridge: DesktopBridge | undefined,
   items: readonly MissionControlItem[],
@@ -413,7 +440,11 @@ export function MissionControlHandoffButton({
     setError("");
     try {
       const botName = target.botName ?? "Grok Bot";
-      if (!(await bridge.openExternal(target.url ?? "grokbot://app"))) {
+      const link =
+        (target.url && grokBotPromptUrl(target.url, taskBrief(item))) ??
+        target.url ??
+        "grokbot://app";
+      if (!(await bridge.openExternal(link))) {
         throw new Error("Could not open " + botName + ".");
       }
       toastManager.add({ type: "info", title: "Opened " + botName });
