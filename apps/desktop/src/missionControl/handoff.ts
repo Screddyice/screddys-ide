@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off -- Uses the owner's installed JEV MCP and local bot links.
+// @effect-diagnostics nodeBuiltinImport:off -- Uses the configured JEV MCP launcher and local bot links.
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import type { MissionControlHandoff, MissionControlHandoffRequest } from "@t3tools/contracts";
@@ -65,7 +65,7 @@ const codexRequest =
   /\b(?:use|using|in|with|via|launch) (?:the )?(?:codex|gpt(?:-\d+(?:\.\d+)?)?)\b/i;
 const claudeRequest = /\b(?:use|using|in|with|via|launch) (?:the )?claude(?: code)?\b/i;
 const teamSources = new Set(["linear", "nebos", "slack"]);
-const localSources = new Set(["email", "tasks", "srcos"]);
+const localSources = new Set(["email", "tasks", "srcos", ...teamSources]);
 const personalTaskSources = new Set(["tasks", "srcos"]);
 
 export function isRestrictedMissionControlTask({
@@ -196,7 +196,37 @@ export async function routeItems(
       ? { ...request, taskContext: { ...request.taskContext, restricted: true } }
       : request,
   );
-  const key = (signal: string) => JSON.stringify([home, signal]);
+  const command = bindings?.jevCommand;
+  const decisions = command
+    ? await routeWithJev(home, command, requests)
+    : requests.map(localRoute);
+  const mainBot: Record<string, unknown> = decisions.includes("grok")
+    ? await NodeFSP.readFile(NodePath.join(baseDir, "mission-control.json"), "utf8")
+        .then((raw) => obj(obj(JSON.parse(raw)).grokBot))
+        .catch(() => ({}))
+    : {};
+  const url = grokBotUrl(mainBot.url);
+  const botName = typeof mainBot.botName === "string" ? mainBot.botName.trim() : "";
+  return decisions.map((kind, index) => {
+    if (kind === "grok") {
+      return { kind, url, ...(url && botName && botName.length <= 100 && { botName }) };
+    }
+    if (
+      (kind === "needs_review" || kind === "unavailable") &&
+      !isRestrictedMissionControlTask(requests[index]!)
+    ) {
+      return { kind: "claude" };
+    }
+    return { kind };
+  });
+}
+
+async function routeWithJev(
+  home: string,
+  command: string,
+  requests: readonly MissionControlHandoffRequest[],
+): Promise<readonly Route[]> {
+  const key = (signal: string) => JSON.stringify([home, command, signal]);
   const signals = requests.map(routingCandidate);
   const missing = [
     ...new Set(
@@ -207,6 +237,7 @@ export async function routeItems(
     const batch = missing.slice(i, i + 10);
     const decisions = decideMissionControl(
       home,
+      command,
       batch.map((signal, index) => `route_${index}: ${signal}`).join("\n"),
       Object.fromEntries(
         batch.map((signal, index) => [
@@ -238,29 +269,9 @@ export async function routeItems(
       const signal = signals[index];
       if (!signal) return localRoute(request);
       const decision = (await routes.get(key(signal))) ?? "unavailable";
-      return decision === "unavailable" && personalTaskSources.has(request.source)
-        ? localRoute(request)
-        : decision;
+      return decision === "unavailable" ? localRoute(request) : decision;
     }),
   );
   while (routes.size > 256) routes.delete(routes.keys().next().value!);
-  const mainBot: Record<string, unknown> = decisions.includes("grok")
-    ? await NodeFSP.readFile(NodePath.join(baseDir, "mission-control.json"), "utf8")
-        .then((raw) => obj(obj(JSON.parse(raw)).grokBot))
-        .catch(() => ({}))
-    : {};
-  const url = grokBotUrl(mainBot.url);
-  const botName = typeof mainBot.botName === "string" ? mainBot.botName.trim() : "";
-  return decisions.map((kind, index) => {
-    if (kind === "grok") {
-      return { kind, url, ...(url && botName && botName.length <= 100 && { botName }) };
-    }
-    if (
-      (kind === "needs_review" || kind === "unavailable") &&
-      !isRestrictedMissionControlTask(requests[index]!)
-    ) {
-      return { kind: "claude" };
-    }
-    return { kind };
-  });
+  return decisions;
 }

@@ -37,14 +37,16 @@ export async function scoreMissionControlPriorities(
   items: readonly MissionControlItem[],
   today: string,
   now: number,
+  command?: string,
 ): Promise<ReadonlyMap<string, number>> {
+  if (!command) return new Map();
   for (const [key, entry] of scores) {
     if (entry.expiresAt <= now) scores.delete(key);
   }
 
   const candidates = items.flatMap((item) => {
     const signal = prioritySignal(item, today);
-    return signal ? [{ id: item.id, signal, key: JSON.stringify([home, signal]) }] : [];
+    return signal ? [{ id: item.id, signal, key: JSON.stringify([home, command, signal]) }] : [];
   });
   const missing = [
     ...new Map(
@@ -55,6 +57,7 @@ export async function scoreMissionControlPriorities(
     const batch = missing.slice(offset, offset + 10);
     const response = decideMissionControl(
       home,
+      command,
       batch.map(([, signal], index) => `priority_${index}: ${signal}`).join("\n"),
       Object.fromEntries(
         batch.map((_, index) => [

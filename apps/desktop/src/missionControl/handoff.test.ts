@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   grokBotUrl,
   localRoute,
+  routeItems,
   pickRoute,
   routingCandidate,
   routingChoices,
@@ -127,4 +128,13 @@ describe("Mission Control handoff", () => {
     ])
       expect(grokBotUrl(rejected)).toBeNull();
   });
+});
+
+it("routes Google Tasks and Linear development work locally without JEV", async () => {
+  await expect(
+    routeItems("/unconfigured", "/unconfigured", [
+      { source: "tasks", title: "Fix the build failure" },
+      { source: "linear", title: "Follow up", taskContext: { workflow: "implementation" } },
+    ]),
+  ).resolves.toEqual([{ kind: "grok_build" }, { kind: "grok_build" }]);
 });

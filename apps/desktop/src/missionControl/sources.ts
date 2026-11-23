@@ -28,6 +28,8 @@ export type Bindings = {
   nebos: string;
   srcosTenant: string;
   srcosCredentialFile?: string | undefined;
+  jevCommand?: string | undefined;
+  cursorCloud?: boolean;
   linearEmail?: string | undefined;
   nebosUrl?: string | undefined;
   contextFile?: string | undefined;
@@ -155,6 +157,8 @@ export async function bindingsAt(baseDir: string): Promise<Bindings | undefined>
       nebosUrl: httpsOrigin(raw.nebosUrl),
       contextFile: localPath(raw.contextFile),
       srcosCredentialFile: localPath(raw.srcosCredentialFile),
+      jevCommand: localPath(raw.jevCommand),
+      cursorCloud: raw.cursorCloud === true,
       claudeWorkspaceDir: localPath(raw.claudeWorkspaceDir),
       restrictedTerms: Array.isArray(raw.restrictedTerms)
         ? raw.restrictedTerms

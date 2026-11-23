@@ -472,7 +472,7 @@ export async function loadAgentActivity(
       url: grokUrl,
     },
   ];
-  const cursorKey = process.env.CURSOR_API_KEY?.trim();
+  const cursorKey = config?.cursorCloud ? process.env.CURSOR_API_KEY?.trim() : undefined;
   if (cursorKey) {
     operations.push({
       source: { provider: "cursor", label: "Cursor Cloud", url: cursorUrl },
@@ -483,7 +483,8 @@ export async function loadAgentActivity(
       provider: "cursor",
       label: "Cursor Cloud",
       coverage: "dashboard",
-      detail: "Open the account’s cloud agents. An API key is needed for in-app coverage.",
+      detail:
+        "Open the account’s cloud agents. Enable Cursor Cloud and configure an API key for in-app coverage.",
       url: cursorUrl,
     });
   }

@@ -14,6 +14,8 @@ For workspace routing, `projectRepositories` maps a supported product key such a
 
 To connect SRCOS, set `srcosTenant` and the absolute path `srcosCredentialFile`. Store the HTTPS `origin` and access `token` together in that separate JSON file with owner-only permissions (`chmod 600`).
 
+Mission Control routes and prioritizes tasks locally by default. To use JEV, set `jevCommand` to an absolute path to your own JEV MCP launcher. Set up its API credentials separately using the launcher's own configuration. To show Cursor Cloud activity in Screddy, set `cursorCloud` to `true` and supply `CURSOR_API_KEY` to the desktop process through its environment.
+
 ## Build and run on Apple Silicon
 
 Use Node 26.12.1, pnpm 12.14.0, Xcode Command Line Tools, and Rust with the `aarch64-apple-darwin` target. From the repository root:
