@@ -56,6 +56,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
+import { withProjectWorkContext } from "./ProjectWorkContext.ts";
 
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_MAX_IDLE_PIN_MS = 4 * 60 * 60 * 1000;
@@ -524,6 +525,7 @@ export const layerWithOptions = (
                   (yield* fileSystem.exists(driver).pipe(Effect.orElseSucceed(() => false)))
                     ? driver
                     : undefined;
+                if (computerUseCommand !== undefined) capabilities.add("computer-use");
                 const existing = yield* mcpSessions.read(threadId);
                 if (existing !== undefined) {
                   // Reserve before async validation so release cannot revoke between validation and reservation.
@@ -545,6 +547,8 @@ export const layerWithOptions = (
                     resolved.thread.providerInstanceId === providerInstanceId &&
                     resolved.capabilities.has("preview") === browserToolsAvailable &&
                     resolved.capabilities.has("device") === deviceToolsAvailable &&
+                    resolved.capabilities.has("computer-use") ===
+                      (computerUseCommand !== undefined) &&
                     existing.computerUseCommand === computerUseCommand &&
                     // A credential issued while the lineage read failed is replaced once it works.
                     (resolved.thread.subagent === true) === subagent
@@ -2154,7 +2158,25 @@ export const layerWithOptions = (
                     ),
                   ),
                   () =>
-                    runtime.startTurn(input).pipe(turnMetrics("send", input.modelSelection.model)),
+                    Effect.gen(function* () {
+                      const original = input.message.text;
+                      const peers = original.trimStart().startsWith("/")
+                        ? []
+                        : ((yield* projectionStore
+                            .getShellSnapshot({
+                              location: "active",
+                              projectId: input.appThread.projectId,
+                            })
+                            .pipe(Effect.orElseSucceed(() => null)))?.threads ?? []);
+                      const text = withProjectWorkContext(original, input.appThread, peers);
+                      const turn =
+                        text === original
+                          ? input
+                          : { ...input, message: { ...input.message, text } };
+                      return yield* runtime
+                        .startTurn(turn)
+                        .pipe(turnMetrics("send", input.modelSelection.model));
+                    }),
                   (_, exit) =>
                     Exit.isFailure(exit)
                       ? observeActivity(

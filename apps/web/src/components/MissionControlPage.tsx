@@ -189,7 +189,7 @@ export function MissionControlPage() {
             <nav aria-label="Mission Control views" className="flex flex-wrap gap-2">
               <Button
                 size="sm"
-                variant={panel === "priorities" ? "secondary" : "ghost"}
+                variant={panel === "priorities" ? "secondary" : "outline"}
                 aria-pressed={panel === "priorities"}
                 onClick={() => setPanel("priorities")}
               >
@@ -197,7 +197,7 @@ export function MissionControlPage() {
               </Button>
               <Button
                 size="sm"
-                variant={panel === "activity" ? "secondary" : "ghost"}
+                variant={panel === "activity" ? "secondary" : "outline"}
                 aria-pressed={panel === "activity"}
                 onClick={() => setPanel("activity")}
               >
