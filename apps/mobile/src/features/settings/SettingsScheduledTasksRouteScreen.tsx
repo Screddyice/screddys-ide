@@ -119,6 +119,8 @@ const THREAD_MODE_LABELS: Record<ScheduledTaskThreadMode, string> = {
 
 function describeSchedule(task: ScheduledTask): string {
   if (task.schedule.type === "webhook") return "On webhook";
+  if (task.schedule.type === "cron")
+    return `Cron ${task.schedule.expression} · ${task.schedule.timeZone}`;
   if (task.schedule.type === "once") {
     const runAt = new Date(task.schedule.runAt);
     return `Once, ${formatRunAtDate(runAt)} at ${formatRunAtTime(runAt)}`;
@@ -416,7 +418,7 @@ export function SettingsScheduledTasksRouteScreen() {
 
   return (
     <SettingsScreen
-      title="Scheduled tasks"
+      title="Automations"
       actions={[
         {
           accessibilityLabel: "New task",
@@ -697,6 +699,7 @@ function TaskForm({
   const offersOnce =
     config?.environment.capabilities.oneTimeSchedules === true ||
     draft.task?.schedule.type === "once";
+  const offersCron = config?.environment.capabilities.cronSchedules === true;
   const offersThreadModes = config?.environment.capabilities.scheduledTaskThreadModes === true;
   const save = async () => {
     if (
@@ -722,6 +725,15 @@ function TaskForm({
       Dialog.alert(
         "Invalid age limit",
         `Enter whole minutes from 1 to ${MAX_WEBHOOK_DELIVERY_AGE_MINUTES}, or leave it blank.`,
+      );
+      return;
+    }
+    if (draft.schedule.mode === "cron" && (!offersCron || schedule === null)) {
+      Dialog.alert(
+        "Cron schedule unavailable",
+        offersCron
+          ? "Enter five cron fields and a valid time zone."
+          : "This environment does not support cron schedules.",
       );
       return;
     }
@@ -1028,6 +1040,9 @@ function TaskForm({
                   ? [{ value: "once" as const, label: "Once" }]
                   : []),
                 { value: "interval", label: "Interval" },
+                ...(offersCron || draft.schedule.mode === "cron"
+                  ? [{ value: "cron" as const, label: "Cron" }]
+                  : []),
                 ...(webhookDenial === undefined || draft.schedule.mode === "webhook"
                   ? [{ value: "webhook" as const, label: "On webhook" }]
                   : []),
@@ -1135,6 +1150,29 @@ function TaskForm({
             <Text className="border-t border-border-subtle px-4 py-3 text-sm text-foreground-muted">
               {`${webhookDenial} Switch the task to a timer, or turn it off, to save it.`}
             </Text>
+          ) : draft.schedule.mode === "cron" ? (
+            <>
+              <FormField
+                label="Cron expression"
+                value={draft.schedule.cronExpression}
+                placeholder="0 9 * * 1-5"
+                disabled={saving}
+                borderTop
+                onChange={(cronExpression) =>
+                  setDraft({ ...draft, schedule: { ...draft.schedule, cronExpression } })
+                }
+              />
+              <FormField
+                label="Time zone"
+                value={draft.schedule.cronTimeZone}
+                placeholder="America/Los_Angeles"
+                disabled={saving}
+                borderTop
+                onChange={(cronTimeZone) =>
+                  setDraft({ ...draft, schedule: { ...draft.schedule, cronTimeZone } })
+                }
+              />
+            </>
           ) : draft.schedule.mode === "once" ? (
             (["date", "time"] as const).map((field) => {
               const runAt = new Date(draft.schedule.runAt);

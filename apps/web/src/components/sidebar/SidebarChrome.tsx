@@ -1,6 +1,7 @@
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
+  CalendarClockIcon,
   ChartNoAxesColumnIcon,
   LayoutDashboardIcon,
   SettingsIcon,
@@ -182,27 +183,51 @@ function SidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
   );
 }
 
-export function SidebarMissionControlLink() {
-  const isOnHome = useLocation({ select: (location) => location.pathname === "/" });
+export function SidebarWorkspaceLinks({
+  showMissionControl,
+}: {
+  readonly showMissionControl: boolean;
+}) {
+  const pathname = useLocation({ select: (location) => location.pathname });
   const { isMobile, setOpenMobile } = useSidebar();
 
   return (
     <SidebarMenu className="mt-1.5">
+      {showMissionControl ? (
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            isActive={pathname === "/"}
+            render={
+              <Link
+                to="/"
+                activeOptions={{ exact: true }}
+                onClick={() => {
+                  if (isMobile) setOpenMobile(false);
+                }}
+              />
+            }
+          >
+            <LayoutDashboardIcon aria-hidden="true" />
+            <span>Mission Control</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ) : null}
       <SidebarMenuItem>
         <SidebarMenuButton
-          isActive={isOnHome}
+          isActive={pathname === "/settings/scheduled-tasks"}
           render={
             <Link
-              to="/"
-              activeOptions={{ exact: true }}
+              to="/settings/scheduled-tasks"
+              search={{ project: "all", machine: "all", checkout: "all" }}
+              activeOptions={{ exact: true, includeSearch: false }}
               onClick={() => {
                 if (isMobile) setOpenMobile(false);
               }}
             />
           }
         >
-          <LayoutDashboardIcon aria-hidden="true" />
-          <span>Mission Control</span>
+          <CalendarClockIcon aria-hidden="true" />
+          <span>Automations</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>

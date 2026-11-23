@@ -45,7 +45,7 @@ vi.mock("../commandPaletteBus", () => ({
 vi.mock("./sidebar/SidebarChrome", () => ({
   SidebarChromeHeader: () => null,
   SidebarChromeFooter: () => null,
-  SidebarMissionControlLink: () => null,
+  SidebarWorkspaceLinks: () => null,
 }));
 
 function project(id: string): Project {

@@ -1,7 +1,7 @@
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
-import { ScheduledTaskUpsertInput } from "@t3tools/contracts";
+import { ScheduledTaskUpsertInput, type ModelSelection } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -178,16 +178,17 @@ it.effect(
   () =>
     Effect.gen(function* () {
       yield* TestClock.setTime(Date.parse("2026-07-01T09:00:00.000Z"));
-      const launched = yield* Deferred.make<string>();
+      const launched = yield* Deferred.make<{ title: string; modelSelection: ModelSelection }>();
       const layerDependencies = Layer.mergeAll(
         NodeCrypto.layer,
         Scheduler.layer,
         ManagedPolicy.layerTest(),
         Layer.mock(ThreadLaunchService.ThreadLaunchService)({
           launch: (input) =>
-            Deferred.succeed(launched, input.title).pipe(
-              Effect.as({ threadId: "thread-idle-poll", resumed: false } as never),
-            ),
+            Deferred.succeed(launched, {
+              title: input.title,
+              modelSelection: input.modelSelection,
+            }).pipe(Effect.as({ threadId: "thread-idle-poll", resumed: false } as never)),
         }),
         Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
           namedProjectsRoot: "/projects",
@@ -219,7 +220,7 @@ it.effect(
             title: "Idle poll",
             prompt: "Review the open pull requests.",
             enabled: true,
-            schedule: { type: "interval", everyMs: 60_000 },
+            schedule: { type: "cron", expression: "1 9 * * *", timeZone: "UTC" },
             projectId: "project-idle-poll",
             workspaceStrategy: { type: "root" },
             modelSelection: { instanceId: "codex", model: "gpt-5.4" },
@@ -230,7 +231,11 @@ it.effect(
         // This poll records the new task's due time; the later ones must still fire it.
         yield* TestClock.adjust("6 seconds");
         yield* TestClock.adjust("60 seconds");
-        expect(yield* Deferred.await(launched)).toBe(created.task.title);
+        expect(created.task.nextRunAt).toBe("2026-07-01T09:01:00.000Z");
+        expect(yield* Deferred.await(launched)).toEqual({
+          title: created.task.title,
+          modelSelection: created.task.modelSelection,
+        });
       }).pipe(Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))));
     }).pipe(Effect.provide(SqlitePersistence.layerMemory)),
 );

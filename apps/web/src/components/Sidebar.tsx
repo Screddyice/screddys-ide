@@ -249,7 +249,7 @@ import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import {
   SidebarChromeFooter,
   SidebarChromeHeader,
-  SidebarMissionControlLink,
+  SidebarWorkspaceLinks,
 } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { TooltipProvider } from "./ui/tooltip";
@@ -3203,7 +3203,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               activeSearchResultIndex={activeSearchResultIndex}
               onClearSearch={clearThreadSearch}
             />
-            {isElectron ? <SidebarMissionControlLink /> : null}
+            <SidebarWorkspaceLinks showMissionControl={isElectron} />
           </SidebarGroup>
         }
       >

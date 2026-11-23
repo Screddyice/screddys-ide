@@ -1,3 +1,5 @@
+import * as Cron from "effect/Cron";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
 import {
@@ -44,6 +46,32 @@ const ScheduledTaskFixedTimeSchedule = Schema.Struct({
     }),
   ),
 });
+
+export function parseScheduledTaskCron(expression: string, timeZone: string): Cron.Cron | null {
+  const fields = expression.trim().split(/\s+/u);
+  const zone = timeZone.trim();
+  if (fields.length !== 5 || expression.length > 128 || zone.length === 0 || zone.length > 64) {
+    return null;
+  }
+  const parsed = Cron.parse(fields.join(" "), zone);
+  return Result.isSuccess(parsed) ? parsed.success : null;
+}
+
+const ScheduledTaskCronSchedule = Schema.Struct({
+  type: Schema.Literal("cron"),
+  expression: TrimmedNonEmptyString.annotate({
+    description: "Five-field cron, such as 0 9 * * 1-5.",
+  }),
+  timeZone: TrimmedNonEmptyString.annotate({
+    description: "IANA time zone, such as America/Los_Angeles.",
+  }),
+}).check(
+  Schema.makeFilter(
+    ({ expression, timeZone }) =>
+      parseScheduledTaskCron(expression, timeZone) !== null ||
+      "Enter a five-field cron expression and a valid time zone.",
+  ),
+);
 
 const ISO_WITH_OFFSET =
   /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/;
@@ -195,6 +223,7 @@ export const ScheduledTaskSchedule = Schema.Union([
   ScheduledTaskIntervalSchedule,
   ScheduledTaskFixedTimeSchedule,
   ScheduledTaskOnceSchedule,
+  ScheduledTaskCronSchedule,
   ScheduledTaskWebhookSchedule,
 ]);
 export type ScheduledTaskSchedule = typeof ScheduledTaskSchedule.Type;
@@ -210,6 +239,7 @@ export const ScheduledTaskUpsertSchedule = Schema.Union([
   }),
   ScheduledTaskFixedTimeSchedule,
   ScheduledTaskOnceSchedule,
+  ScheduledTaskCronSchedule,
   ScheduledTaskUpsertWebhookSchedule,
 ]);
 export type ScheduledTaskUpsertSchedule = typeof ScheduledTaskUpsertSchedule.Type;

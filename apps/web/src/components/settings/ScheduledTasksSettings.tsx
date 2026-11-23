@@ -170,6 +170,8 @@ const EMPTY_DRAFT: DraftState = {
   enabled: true,
   scheduleMode: "fixed",
   intervalMinutes: "15",
+  cronExpression: "",
+  cronTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   timeOfDay: "09:00",
   runAt: "",
   savedRunAt: "",
@@ -329,6 +331,7 @@ const ONCE_FORMATTER = new Intl.DateTimeFormat(undefined, {
 
 export function scheduleLabel(schedule: ScheduledTaskSchedule): string {
   if (schedule.type === "webhook") return "On webhook";
+  if (schedule.type === "cron") return `Cron ${schedule.expression} · ${schedule.timeZone}`;
   if (schedule.type === "once") return `Once, ${ONCE_FORMATTER.format(new Date(schedule.runAt))}`;
   if (schedule.type === "interval") {
     const minutes = schedule.everyMs / 60_000;
@@ -458,7 +461,7 @@ export function ScheduledTasksSettings(target: {
   return (
     <SettingsPageContainer>
       <SettingsSection
-        title="Scheduled tasks"
+        title="Automations"
         variant="plain"
         headerAction={
           <Button
@@ -471,7 +474,7 @@ export function ScheduledTasksSettings(target: {
             }
           >
             <PlusIcon className="size-3" />
-            New task
+            New automation
           </Button>
         }
       >
@@ -795,7 +798,7 @@ function ScheduledTaskRow({
       status={
         <div className="flex flex-wrap items-center gap-2">
           <span>
-            {scheduleLabel(task.schedule)} ·{" "}
+            {task.modelSelection.model} · {scheduleLabel(task.schedule)} ·{" "}
             {task.blockedByPolicy !== undefined ? (
               task.blockedByPolicy
             ) : !task.enabled ? (
@@ -1371,6 +1374,7 @@ function ScheduledTaskEditorForm({
   const offersOnce =
     environment?.serverConfig?.environment.capabilities.oneTimeSchedules === true ||
     task?.schedule.type === "once";
+  const offersCron = environment?.serverConfig?.environment.capabilities.cronSchedules === true;
   const offersThreadModes =
     environment?.serverConfig?.environment.capabilities.scheduledTaskThreadModes === true;
   const connected =
@@ -1501,6 +1505,10 @@ function ScheduledTaskEditorForm({
       reportFailure("Invalid interval", "Enter an interval of at least one minute.");
       return;
     }
+    if (schedule.type === "cron" && !offersCron) {
+      reportFailure("Cron is unavailable", "Choose an environment that supports cron schedules.");
+      return;
+    }
     if (schedule.type === "once" && !offersOnce) {
       reportFailure(
         "Once is not available here",
@@ -1564,10 +1572,9 @@ function ScheduledTaskEditorForm({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{draft.editingId ? "Edit task" : "New task"}</DialogTitle>
+        <DialogTitle>{draft.editingId ? "Edit automation" : "New automation"}</DialogTitle>
         <DialogDescription>
-          Run a prompt automatically on an interval, at a fixed time, once at a set date, or when a
-          webhook is called.
+          Set a schedule, choose where it runs, and select a model.
         </DialogDescription>
       </DialogHeader>
 
@@ -1639,6 +1646,11 @@ function ScheduledTaskEditorForm({
               </SelectPopup>
             </Select>
           </Field>
+          <p className="text-xs text-muted-foreground">
+            {environment?.serverConfig?.environment.platform.os === "darwin"
+              ? "Runs on the selected Mac. Desktop interaction uses CuaDriver when Computer Use is enabled and the Mac is awake and signed in."
+              : "Runs on the selected server with that server’s tools and model accounts."}
+          </p>
           {tasksQuery.error ? (
             <p className="text-sm text-destructive" role="status">
               {tasksQuery.error}
@@ -1821,6 +1833,7 @@ function ScheduledTaskEditorForm({
                     mode === "fixed" ||
                     mode === "once" ||
                     mode === "interval" ||
+                    mode === "cron" ||
                     mode === "webhook"
                   )
                     setDraft((current) => {
@@ -1851,6 +1864,9 @@ function ScheduledTaskEditorForm({
                   <Toggle value="once">Once</Toggle>
                 ) : null}
                 <Toggle value="interval">Every interval</Toggle>
+                {offersCron || draft.scheduleMode === "cron" ? (
+                  <Toggle value="cron">Cron</Toggle>
+                ) : null}
                 <Toggle
                   value="webhook"
                   disabled={webhookDenial !== undefined && draft.scheduleMode !== "webhook"}
@@ -2056,6 +2072,32 @@ function ScheduledTaskEditorForm({
                   }
                 />
               </div>
+            ) : draft.scheduleMode === "cron" ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Cron expression" htmlFor="scheduled-task-cron">
+                  <Input
+                    id="scheduled-task-cron"
+                    placeholder="0 9 * * 1-5"
+                    value={draft.cronExpression}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, cronExpression: event.target.value }))
+                    }
+                  />
+                </Field>
+                <Field label="Time zone" htmlFor="scheduled-task-cron-zone">
+                  <Input
+                    id="scheduled-task-cron-zone"
+                    placeholder="America/Los_Angeles"
+                    value={draft.cronTimeZone}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, cronTimeZone: event.target.value }))
+                    }
+                  />
+                </Field>
+                <p className="text-xs text-muted-foreground sm:col-span-2">
+                  Minute, hour, day of month, month, day of week.
+                </p>
+              </div>
             ) : draft.scheduleMode === "fixed" ? (
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-2">
@@ -2146,7 +2188,7 @@ function ScheduledTaskEditorForm({
           }
           onClick={() => void submit()}
         >
-          {draft.editingId ? "Save task" : "Create task"}
+          {draft.editingId ? "Save automation" : "Create automation"}
         </Button>
       </DialogFooter>
     </>

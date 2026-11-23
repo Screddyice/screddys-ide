@@ -1,4 +1,8 @@
-import { isWebhookDedupeTemplate, scheduledTaskThreadMode } from "@t3tools/contracts";
+import {
+  isWebhookDedupeTemplate,
+  parseScheduledTaskCron,
+  scheduledTaskThreadMode,
+} from "@t3tools/contracts";
 import type {
   ModelSelection,
   ServerConfig,
@@ -53,12 +57,14 @@ export function scheduledTaskDefaultModel(
 }
 
 export type ScheduleDraft = {
-  readonly mode: "fixed_time" | "once" | "interval" | "webhook";
+  readonly mode: "fixed_time" | "once" | "interval" | "cron" | "webhook";
   readonly timeOfDay: string;
   /** ISO time for a one-time run. Empty until the user picks the "Once" mode. */
   readonly runAt: string;
   readonly weekdays: ReadonlyArray<number>;
   readonly intervalMinutes: string;
+  readonly cronExpression: string;
+  readonly cronTimeZone: string;
   readonly signature: ScheduledTaskWebhookSignature | null;
   readonly maxDeliveryAgeMinutes: string;
   readonly replayKey: string;
@@ -75,6 +81,8 @@ export const DEFAULT_SCHEDULE: ScheduleDraft = {
   runAt: "",
   weekdays: [1, 2, 3, 4, 5],
   intervalMinutes: "15",
+  cronExpression: "",
+  cronTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   signature: null,
   maxDeliveryAgeMinutes: "",
   replayKey: "",
@@ -96,6 +104,13 @@ export function scheduleDraftForTask(task: Pick<ScheduledTask, "schedule">): Sch
       };
     case "once":
       return { ...DEFAULT_SCHEDULE, mode: "once", runAt: task.schedule.runAt };
+    case "cron":
+      return {
+        ...DEFAULT_SCHEDULE,
+        mode: "cron",
+        cronExpression: task.schedule.expression,
+        cronTimeZone: task.schedule.timeZone,
+      };
     case "interval":
       return {
         ...DEFAULT_SCHEDULE,
@@ -177,6 +192,13 @@ export function scheduleFromDraft(draft: ScheduleDraft): ScheduledTaskUpsertSche
     const runAt = new Date(draft.runAt);
     return Number.isNaN(runAt.getTime()) ? null : { type: "once", runAt: runAt.toISOString() };
   }
+  if (draft.mode === "cron") {
+    const expression = draft.cronExpression.trim();
+    const timeZone = draft.cronTimeZone.trim();
+    return parseScheduledTaskCron(expression, timeZone) === null
+      ? null
+      : { type: "cron", expression, timeZone };
+  }
   if (draft.mode === "interval") {
     const minutes = parseIntervalMinutes(draft.intervalMinutes);
     const everyMs = Math.round(minutes * 60_000);
@@ -232,6 +254,8 @@ function draftSignature(draft: ScheduledTaskDraft): string {
     draft.schedule.runAt,
     [...draft.schedule.weekdays].sort((a, b) => a - b),
     draft.schedule.intervalMinutes,
+    draft.schedule.cronExpression,
+    draft.schedule.cronTimeZone,
     draft.schedule.maxDeliveryAgeMinutes,
     draft.schedule.replayKey,
     draft.schedule.coalesceKey,
