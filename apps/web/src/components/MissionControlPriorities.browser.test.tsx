@@ -87,7 +87,7 @@ it("sends the reviewed reply and completes the exact Linear row on its own butto
     id: "linear:fa751e05-66cd-4d10-8014-a173c8b7d11d",
     source: "linear",
     title: "Fix checkout test",
-    account: "Team Nebula",
+    account: "Example workspace",
   };
   const getMissionControl = vi.fn<DesktopBridge["getMissionControl"]>().mockResolvedValue({
     configured: true,
@@ -178,14 +178,20 @@ it("filters the cross-source queue and pages through mail for the selected accou
     items: [
       item,
       { ...item, id: "srcos-1", source: "srcos", title: "SRCOS follow-up" },
-      { ...item, id: "linear-1", source: "linear", account: "Team Nebula", title: "Team issue" },
+      {
+        ...item,
+        id: "linear-1",
+        source: "linear",
+        account: "Example workspace",
+        title: "Team issue",
+      },
     ],
     sources: [
       { source: "tasks", account: "Personal", state: "ready", detail: "" },
       { source: "srcos", account: "Personal", state: "partial", detail: "" },
-      { source: "linear", account: "Team Nebula", state: "ready", detail: "" },
+      { source: "linear", account: "Example workspace", state: "ready", detail: "" },
     ],
-    context: "Team Nebula guidance",
+    context: "Example workspace guidance",
     srcosContext: "Personal workspace guidance",
     nextCursor: null,
   };
@@ -227,8 +233,8 @@ it("filters the cross-source queue and pages through mail for the selected accou
       .element(screen.getByText("Personal workspace guidance", { exact: false }))
       .toBeVisible();
     await expect.element(screen.getByText("Personal deadline")).not.toBeInTheDocument();
-    await expect.element(screen.getByText("Team Nebula guidance")).not.toBeInTheDocument();
-    await screen.getByRole("button", { name: "Team Nebula work" }).click();
+    await expect.element(screen.getByText("Example workspace guidance")).not.toBeInTheDocument();
+    await screen.getByRole("button", { name: "Workspace tasks" }).click();
     await expect.element(screen.getByText("Team issue")).toBeVisible();
     await expect.element(screen.getByText("SRCOS follow-up")).not.toBeInTheDocument();
     await expect
@@ -292,7 +298,7 @@ it("loads a selected filter while All is pending and ignores the old response", 
     slack.resolve({
       ...snapshot,
       items: [{ ...mailItem, id: "slack-1", source: "slack", title: "Slack reply fixture" }],
-      sources: [{ source: "slack", account: "Team Nebula", state: "ready", detail: "" }],
+      sources: [{ source: "slack", account: "Example workspace", state: "ready", detail: "" }],
     });
     await expect.element(screen.getByText("Slack reply fixture")).toBeVisible();
     all.resolve(snapshot);

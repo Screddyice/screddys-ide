@@ -4,8 +4,9 @@ import * as NodePath from "node:path";
 import type { MissionControlHandoff, MissionControlHandoffRequest } from "@t3tools/contracts";
 
 import { isGrokBotConversationUrl } from "../electron/GrokBotLink.ts";
+import { isRestrictedText } from "./context.ts";
 import { decideMissionControl } from "./jev.ts";
-import { obj } from "./sources.ts";
+import { bindingsAt, obj } from "./sources.ts";
 
 const criteria = {
   grok_build:
@@ -46,7 +47,7 @@ const actionTypes = [
     /\b(public (web|research)|scrap(?:e|ing)|crawl|competitor research|website research)\b/i,
   ],
   [
-    "Team Nebula connected workspace operations",
+    "Connected workspace operations",
     /\b(workstream|crm|pipeline|triage queue|team coordination)\b/i,
   ],
   ["LinkedIn", /\blinkedin\b/i],
@@ -71,9 +72,7 @@ export function isRestrictedMissionControlTask({
   title,
   taskContext,
 }: MissionControlHandoffRequest) {
-  return (
-    taskContext?.restricted || /\b(rs21|pnm|nmprc|nerc|confidential|regulated data)\b/i.test(title)
-  );
+  return taskContext?.restricted || isRestrictedText(title);
 }
 
 function hasDevelopmentAction(actions: readonly string[]) {
@@ -89,7 +88,7 @@ function routingSignals({ source, title, taskContext }: MissionControlHandoffReq
   const workstreamAction =
     taskContext?.activeWorkstream &&
     !titleActions.some((action) => action !== trackerActions.productivity) &&
-    "Team Nebula connected workspace operations";
+    "Connected workspace operations";
   const fallbackAction =
     trackerAction || workstreamAction || (source === "slack" && trackerActions.productivity);
   const identified = [...new Set([...titleActions, ...(fallbackAction ? [fallbackAction] : [])])];
@@ -189,8 +188,14 @@ const routes = new Map<string, Promise<Route>>();
 export async function routeItems(
   home: string,
   baseDir: string,
-  requests: readonly MissionControlHandoffRequest[],
+  input: readonly MissionControlHandoffRequest[],
 ): Promise<readonly MissionControlHandoff[]> {
+  const bindings = await bindingsAt(baseDir);
+  const requests = input.map((request) =>
+    isRestrictedText(request.title, bindings?.restrictedTerms)
+      ? { ...request, taskContext: { ...request.taskContext, restricted: true } }
+      : request,
+  );
   const key = (signal: string) => JSON.stringify([home, signal]);
   const signals = requests.map(routingCandidate);
   const missing = [

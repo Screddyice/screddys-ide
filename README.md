@@ -2,6 +2,18 @@
 
 A macOS coding-agent workspace based on [T3 Code v0.1.9](https://github.com/pingdotgg/t3code/releases/tag/v0.1.9). Use your existing Codex, Claude Code, or other supported agents to work across projects, terminals, Git worktrees, and diffs. The upstream [MIT license](./LICENSE) applies.
 
+## Download for Apple Silicon
+
+Get the DMG or ZIP from [Screddy Releases](https://github.com/Screddyice/screddys-ide/releases/latest). Download new versions from the same page.
+
+## Configure Mission Control
+
+Mission Control reads optional account and workspace bindings from `~/.screddys-ide/mission-control.json` on the Mac running Screddy. Add your own Composio connection selectors for Google Tasks (`tasks`), Linear (`linear`), Slack (`slack`), and NEBOS (`nebos`). To complete issues in Linear, also set `linearEmail` to the connected account's email.
+
+For workspace routing, `projectRepositories` maps a supported product key such as `nebos` to its GitHub `owner/repo`. Add the corresponding project in Screddy. Set `nebosUrl` to your NEBOS HTTPS origin for source links. An optional `contextFile` or `claudeWorkspaceDir` uses a local absolute path. Set `restrictedTerms` to a list of phrases that should stay out of agent handoff and priority scoring.
+
+To connect SRCOS, set `srcosTenant` and the absolute path `srcosCredentialFile`. Store the HTTPS `origin` and access `token` together in that separate JSON file with owner-only permissions (`chmod 600`).
+
 ## Build and run on Apple Silicon
 
 Use Node 26.12.1, pnpm 12.14.0, Xcode Command Line Tools, and Rust with the `aarch64-apple-darwin` target. From the repository root:
@@ -16,9 +28,9 @@ The optional `.env` step includes the upstream public T3 Connect configuration. 
 
 ## Build a preview from main
 
-Run **Package Screddy for Apple Silicon** on the `main` branch in GitHub Actions with a version such as `0.1.42-preview.20261122.1`. The workflow checks Mission Control and chat behavior on pull requests. Builds from `main` attach the DMG, ZIP, and SHA-256 checksums to the private workflow run.
+Run **Package Screddy for Apple Silicon** on the `main` branch in GitHub Actions with a version such as `0.1.42-preview.20261122.1`. The workflow checks Mission Control and chat behavior on pull requests. Builds from `main` attach the DMG, ZIP, and SHA-256 checksums to the workflow run.
 
-## Build a stable release
+## Build a signed release for a private feed
 
 Run **Sign Screddy stable for Apple Silicon** on `main` with the release version, such as `0.1.42`. Set `CSC_LINK` and `CSC_KEY_PASSWORD` for the Developer ID Application signing identity and `APPLE_API_KEY`, `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER` for notarization in the repository's Actions secrets. Publish the verified DMG, ZIP, blockmaps, `latest-mac.yml`, and `SHA256SUMS` together on the private GitHub release for the exact build commit.
 
@@ -43,13 +55,11 @@ Keep the IDE running while using its local environment from your phone. Direct p
 - In a coding thread, open the model picker and choose **Add local model**. Enter the URL and exact model ID from your loopback OpenAI-compatible server, then select the saved model. This uses OpenCode on the local environment’s PATH. Enable tool calling only for models that support it.
 - For titles, commit messages, and similar text tasks, choose **Settings → Providers → Text generators → Add generator → Custom (OpenAI-compatible)**. Enter the base URL of a running local model server, such as `http://127.0.0.1:11434/v1` for Ollama.
 
-The endpoint is relative to the machine running the IDE environment. Setup is opt-in. Keep models reserved for standalone terminal use out of these provider and text-generator settings.
+The endpoint is relative to the machine running the IDE environment. Setup is opt-in.
 
 ## Split workspace
 
 Use **Split workspace** in a thread header to add a side-by-side pane. Each pane can show another existing thread. A diff opened from a split pane appears as a sheet on the right.
-
-The Local Qwen pane has been removed. A layout saved while it existed still loads, with that pane blank.
 
 ## Upstream T3 Code documentation
 

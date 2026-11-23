@@ -29,16 +29,20 @@ describe("SRCOS Mission Control boundaries", () => {
         { ...task, id: "visible", clientVisible: true },
       ],
       "personal",
+      "https://workspace.example.test",
     );
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
       source: "srcos",
       id: "srcos:task-1",
+      url: "https://workspace.example.test/tasks",
       due: "2026-11-19",
       urgency: "high",
     });
     expect(JSON.stringify(items)).not.toContain(task.description);
-    expect(() => srcosItems([{ ...task, tenantId: "team" }], "personal")).toThrow(/tenant/);
+    expect(() =>
+      srcosItems([{ ...task, tenantId: "team" }], "personal", "https://workspace.example.test"),
+    ).toThrow(/tenant/);
   });
 
   it("offers the Grok launcher without routing personal work to a team bot", async () => {
@@ -61,6 +65,7 @@ describe("SRCOS Mission Control boundaries", () => {
         NodePath.join(directory, "mission-control.json"),
         JSON.stringify({
           grokBot: { url, botName },
+          restrictedTerms: ["example client"],
           srcosGrokHandoffs: {
             "EX-31": { url: "grokbot://app/v1/agent?id=old-specialist", botName: "Old bot" },
           },
@@ -72,6 +77,7 @@ describe("SRCOS Mission Control boundaries", () => {
           { source: "srcos", title: "[EX-310] Follow up on the presentation" },
           { source: "tasks", title: "[EX-31] Follow up on the presentation" },
           { source: "srcos", title: "Status?" },
+          { source: "tasks", title: "Fix a build failure for Example Client" },
           { source: "srcos", title: "[EX-31] Follow up", taskContext: { restricted: true } },
         ]),
       ).resolves.toEqual([
@@ -79,6 +85,7 @@ describe("SRCOS Mission Control boundaries", () => {
         { kind: "grok", url, botName },
         { kind: "grok", url, botName },
         { kind: "claude" },
+        { kind: "needs_review" },
         { kind: "needs_review" },
       ]);
     } finally {

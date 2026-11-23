@@ -15,6 +15,7 @@ const bindings: Bindings = {
   mail: [{ label: "Personal", selector: "owner", email: "owner@example.test" }],
   slack: "",
   linear: "team",
+  linearEmail: "owner@example.test",
   tasks: "",
   nebos: "",
   srcosTenant: "",
@@ -137,7 +138,7 @@ it("updates only the selected assigned issue to that team's completed status", a
       states: { nodes: [state], pageInfo: { hasNextPage: false } },
     },
   };
-  const viewer = { id: "owner", email: "owner@teamnebula.ai" };
+  const viewer = { id: "owner", email: "Owner@Example.Test" };
   const linearCompletionTarget = vi
     .fn<Connector["linearCompletionTarget"]>()
     .mockResolvedValue({ viewer, issue });
@@ -149,6 +150,16 @@ it("updates only the selected assigned issue to that team's completed status", a
     ok: true,
   });
   expect(completeLinearIssue).toHaveBeenCalledExactlyOnceWith("team", id, status);
+  await expect(
+    completeMissionControlIssue(api, { ...bindings, linearEmail: undefined }, "linear:" + id),
+  ).rejects.toThrow(/connected Linear email/);
+  linearCompletionTarget.mockResolvedValue({
+    viewer: { ...viewer, email: "someone@example.test" },
+    issue,
+  });
+  await expect(completeMissionControlIssue(api, bindings, "linear:" + id)).rejects.toThrow(
+    /assigned/,
+  );
   linearCompletionTarget.mockResolvedValue({
     viewer,
     issue: { ...issue, assignee: { id: "other" } },
