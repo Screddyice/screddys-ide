@@ -100,7 +100,7 @@ it("orders team lanes across sources and applies pinned personal focus to SRCOS 
   const base: MissionControlItem = {
     id: "new",
     source: "linear",
-    account: "Team Nebula",
+    account: "Example workspace",
     title: "Follow up on budget review",
     detail: "",
     url: null,
@@ -109,7 +109,7 @@ it("orders team lanes across sources and applies pinned personal focus to SRCOS 
     urgency: "normal",
   };
   const lanes = teamLaneOrder(
-    "---\nns: tmn\ntenant: teamnebula\n---\nLane priority (founders' decision date): **L2 first, then L3.**",
+    "---\nns: demo\ntenant: example-workspace\n---\nLane priority (founders' decision date): **L2 first, then L3.**",
   );
   const team = { lanes, workstreams: ["budget review"] };
   const personal = personalFocusTerms("- Priority: budget review\n- Priority: home repairs");

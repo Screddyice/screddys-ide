@@ -4,7 +4,11 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
-import type { MissionControlItem, MissionControlResponse } from "@t3tools/contracts";
+import type {
+  MissionControlItem,
+  MissionControlResponse,
+  MissionControlTaskContext,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
 import { gmailThread, safeProviderUrl } from "./triage.ts";
@@ -23,6 +27,13 @@ export type Bindings = {
   tasks: string;
   nebos: string;
   srcosTenant: string;
+  srcosCredentialFile?: string | undefined;
+  linearEmail?: string | undefined;
+  nebosUrl?: string | undefined;
+  contextFile?: string | undefined;
+  claudeWorkspaceDir?: string | undefined;
+  restrictedTerms?: readonly string[];
+  projectRepositories?: Partial<Record<NonNullable<MissionControlTaskContext["product"]>, string>>;
 };
 export type Connector = ReturnType<typeof connector>;
 
@@ -92,6 +103,23 @@ const dueDate = (value: unknown) => {
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
 };
 
+export function httpsOrigin(value: unknown): string | undefined {
+  try {
+    const url = new URL(str(value));
+    if (
+      url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
+      url.pathname === "/" &&
+      !url.search &&
+      !url.hash
+    )
+      return url.origin;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function bindingsAt(baseDir: string): Promise<Bindings | undefined> {
   try {
     const raw = obj(
@@ -109,8 +137,32 @@ export async function bindingsAt(baseDir: string): Promise<Bindings | undefined>
         ? [{ label, email, selector: str(entry.selector) }]
         : [];
     });
+    const linearEmail = str(raw.linearEmail).trim().toLowerCase();
+    const localPath = (value: unknown) => {
+      const path = str(value);
+      return NodePath.isAbsolute(path) && !path.includes("\0") ? path : undefined;
+    };
+    const repositories = obj(raw.projectRepositories);
+    const projectRepositories = Object.fromEntries(
+      ["nebos", "hyperscale", "hypercrawl"].flatMap((product) => {
+        const repository = str(repositories[product]).trim().toLowerCase();
+        return /^[a-z0-9-]+\/[a-z0-9_.-]+$/.test(repository) ? [[product, repository]] : [];
+      }),
+    );
     return {
       mail,
+      linearEmail: /^[\w.+-]+@[\w.-]+$/.test(linearEmail) ? linearEmail : undefined,
+      nebosUrl: httpsOrigin(raw.nebosUrl),
+      contextFile: localPath(raw.contextFile),
+      srcosCredentialFile: localPath(raw.srcosCredentialFile),
+      claudeWorkspaceDir: localPath(raw.claudeWorkspaceDir),
+      restrictedTerms: Array.isArray(raw.restrictedTerms)
+        ? raw.restrictedTerms
+            .slice(0, 50)
+            .map((term) => text(term, 80))
+            .filter(Boolean)
+        : [],
+      projectRepositories,
       slack: selector(raw.slack) ? str(raw.slack) : "",
       linear: selector(raw.linear) ? str(raw.linear) : "",
       tasks: selector(raw.tasks) ? str(raw.tasks) : "",
@@ -214,9 +266,10 @@ export function connector(home: string) {
       if (result.ok === false) throw new Error("Provider rejected request");
       return result;
     },
-    async linearIssues(account: string, after: string | null) {
+    async linearIssues(account: string, after: string | null, expectedEmail?: string) {
       const data = await linearGraphql(account, assignedIssuesQuery, { after });
-      if (!str(obj(data.viewer).email).endsWith("@teamnebula.ai"))
+      const email = str(obj(data.viewer).email).trim().toLowerCase();
+      if (!email || (expectedEmail && email !== expectedEmail))
         throw new Error("Linear identity unavailable");
       return obj(data.issues);
     },
@@ -423,7 +476,7 @@ export async function readSlack(api: Connector, account: string, today: string):
     return {
       id: `slack:${channelId}:${root}`,
       source: "slack",
-      account: "Team Nebula",
+      account: "Slack",
       title,
       detail: dm ? "Direct message" : "Mention",
       url: safeProviderUrl(hit.permalink, "slack.com", true),
@@ -441,14 +494,16 @@ export async function readSlack(api: Connector, account: string, today: string):
   };
 }
 
-export async function readLinear(api: Connector, account: string): Promise<Items> {
+export async function readLinear(api: Connector, bindings: Bindings): Promise<Items> {
   const items: MissionControlItem[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < 20; page++) {
-    const result: Obj = await api.linearIssues(account, cursor).catch((error: unknown) => {
-      if (page === 0) throw error;
-      return {};
-    });
+    const result: Obj = await api
+      .linearIssues(bindings.linear, cursor, bindings.linearEmail)
+      .catch((error: unknown) => {
+        if (page === 0) throw error;
+        return {};
+      });
     if (!Array.isArray(result.nodes)) break;
     for (const issue of rows(result.nodes)) {
       const state = obj(issue.state);
@@ -464,7 +519,7 @@ export async function readLinear(api: Connector, account: string): Promise<Items
       items.push({
         id: `linear:${str(issue.id)}`,
         source: "linear",
-        account: "Team Nebula",
+        account: "Linear",
         title: issueTitle,
         detail: [text(issue.identifier, 30), text(state.name, 40)].filter(Boolean).join(" · "),
         url,
@@ -475,6 +530,7 @@ export async function readLinear(api: Connector, account: string): Promise<Items
           issueTitle,
           text(obj(issue.project).name),
           rows(obj(issue.labels).nodes).map((label) => text(label.name)),
+          bindings.restrictedTerms,
         ),
       });
     }
@@ -553,15 +609,7 @@ export async function readTasks(api: Connector, account: string): Promise<Items>
   };
 }
 
-export async function sharedContext(home: string) {
-  const path = NodePath.join(
-    home,
-    "TeamNebula",
-    "team-context",
-    "projects-context",
-    "tmn",
-    "CONTEXT.md",
-  );
+export async function sharedContext(path: string) {
   const contents = await NodeFSP.readFile(path, "utf8");
   return teamLaneOrder(contents);
 }
@@ -574,11 +622,11 @@ export async function readNebosWorkstreams(api: Connector, account: string) {
     .flatMap((row) => [text(row.key, 80), text(row.title, 100)].filter(Boolean));
 }
 
-export async function readNebos(api: Connector, account: string): Promise<Items> {
+export async function readNebos(api: Connector, bindings: Bindings): Promise<Items> {
   const limit = 200;
   const reads = await Promise.allSettled(
     ["todo", "in_progress", "blocked", "review"].map((status) =>
-      api.action("CUSTOM_NEBOS_TASK_LIST", account, { status, limit }).then((data) => {
+      api.action("CUSTOM_NEBOS_TASK_LIST", bindings.nebos, { status, limit }).then((data) => {
         const tasks = obj(data.result).tasks;
         if (!Array.isArray(tasks)) throw new Error("NEBOS returned no task list");
         return rows(tasks);
@@ -598,10 +646,10 @@ export async function readNebos(api: Connector, account: string): Promise<Items>
   const items = globalTasks.map((task): MissionControlItem => ({
     id: `nebos:${str(task.id)}`,
     source: "nebos",
-    account: "Team Nebula",
+    account: "NEBOS",
     title: text(task.title),
     detail: ["Internal task", str(task.status).replaceAll("_", " ")].join(" · "),
-    url: "https://os.teamnebula.ai/",
+    url: bindings.nebosUrl ?? null,
     activity: str(task.updatedAt),
     due: dueDate(task.dueDate),
     urgency: ["urgent", "critical"].includes(str(task.priority).toLowerCase())
@@ -613,6 +661,7 @@ export async function readNebos(api: Connector, account: string): Promise<Items>
       text(task.title),
       text(obj(task.project).name),
       Array.isArray(task.tags) ? task.tags.map((tag) => text(tag, 80)) : [],
+      bindings.restrictedTerms,
     ),
   }));
   return {

@@ -26,7 +26,7 @@ const providerLabels = {
   claude: "Claude",
   cursor: "Cursor",
   grok: "Grok",
-  nebos: "Team Nebula bots",
+  nebos: "NEBOS bots",
 } satisfies Record<MissionControlAgentProvider, string>;
 
 const statuses = {

@@ -2,7 +2,14 @@ import type { MissionControlItem } from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
 
 import { decideMissionControl } from "../../missionControl/jev.ts";
-import { readMail, readSlack, readTasks } from "../../missionControl/sources.ts";
+import {
+  bindingsAt,
+  readLinear,
+  readMail,
+  readSlack,
+  readTasks,
+  sharedContext,
+} from "../../missionControl/sources.ts";
 import { readSrcos } from "../../missionControl/srcos.ts";
 import { readMissionControl } from "./missionControl.ts";
 
@@ -15,6 +22,7 @@ vi.mock("../../missionControl/sources.ts", async (importOriginal) => ({
     nebos: "test",
     tasks: "test",
     srcosTenant: "test",
+    srcosCredentialFile: "/fixture/srcos.json",
   })),
   connector: vi.fn(),
   readMail: vi.fn(),
@@ -137,4 +145,28 @@ it("ranks live-feed tasks with bounded JEV signals and preserves deadlines", asy
 
   await readMissionControl(home, home, request, now);
   expect(decideMissionControl).toHaveBeenCalledTimes(1);
+});
+
+it("leaves workspace sources disabled without explicit local bindings", async () => {
+  vi.mocked(bindingsAt).mockResolvedValueOnce({
+    mail: [],
+    slack: "",
+    linear: "",
+    nebos: "",
+    tasks: "",
+    srcosTenant: "fixture-tenant",
+  });
+  vi.mocked(readLinear).mockClear();
+  vi.mocked(readSrcos).mockClear();
+  vi.mocked(sharedContext).mockClear();
+  const response = await readMissionControl(
+    "/fixture",
+    "/fixture/clean",
+    { view: "priorities", refresh: true },
+    Date.parse("2026-11-16T22:00:00Z"),
+  );
+  expect(response).toMatchObject({ configured: false, items: [], sources: [] });
+  expect(readLinear).not.toHaveBeenCalled();
+  expect(readSrcos).not.toHaveBeenCalled();
+  expect(sharedContext).not.toHaveBeenCalled();
 });

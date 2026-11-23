@@ -237,6 +237,8 @@ export async function completeMissionControlIssue(
 ) {
   const id = itemId.match(linearItemId)?.[1];
   if (!id || !bindings.linear) throw actionError("This item is not a configured Linear issue.");
+  const expectedEmail = bindings.linearEmail;
+  if (!expectedEmail) throw actionError("Configure the connected Linear email to complete issues.");
   const check = async () => {
     const read = await api.linearCompletionTarget(bindings.linear, id);
     const { id: viewer, email } = obj(read.viewer);
@@ -244,7 +246,7 @@ export async function completeMissionControlIssue(
     if (
       typeof viewer !== "string" ||
       !viewer ||
-      !str(email).toLowerCase().endsWith("@teamnebula.ai") ||
+      str(email).trim().toLowerCase() !== expectedEmail ||
       issue.id !== id ||
       obj(issue.assignee).id !== viewer
     ) {

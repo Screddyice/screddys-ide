@@ -3,7 +3,16 @@ import type { MissionControlItem, MissionControlTaskContext } from "@t3tools/con
 const products = ["nebos", "hyperscale", "hypercrawl"] as const;
 const laneLabel = /^(?:(?:lane|gtm)[- :]+)?(L(?:10|[1-9]))$/i;
 const laneInTitle = /\bL(?:10|[1-9])\b/gi;
-const restricted = /\b(rs21|pnm|nmprc|nerc|confidential|regulated data)\b/i;
+const restricted = /\b(confidential|regulated data)\b/i;
+
+export function isRestrictedText(value: string, terms: readonly string[] = []): boolean {
+  if (restricted.test(value)) return true;
+  const text = normalizedWords(value);
+  return terms.some((term) => {
+    const words = normalizedWords(term);
+    return words.length > 2 && text.includes(words);
+  });
+}
 
 export type TeamPriorityContext = {
   lanes: readonly string[];
@@ -12,8 +21,8 @@ export type TeamPriorityContext = {
 
 export function teamLaneOrder(contents: string): readonly string[] {
   const frontmatter = contents.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!frontmatter || !/^tenant: teamnebula\r?$/m.test(frontmatter[1]!)) {
-    throw new Error("Team Nebula context unavailable");
+  if (!frontmatter || !/^tenant: [a-z0-9][a-z0-9_-]*\r?$/im.test(frontmatter[1]!)) {
+    throw new Error("Workspace context unavailable");
   }
   const decision = contents.match(
     /^Lane priority \(founders' decision [^)]*\):\s*\*\*([^*]+)\*\*/m,
@@ -30,10 +39,12 @@ export function teamTaskContext(
   title: string,
   project: string,
   labels: readonly string[],
+  restrictedTerms?: readonly string[],
 ): MissionControlTaskContext {
   // Product/workflow hints come from structured project and tracker metadata.
   const metadata = [project, ...labels].join(" ");
-  if (restricted.test(metadata) || restricted.test(title)) return { restricted: true };
+  if (isRestrictedText(metadata, restrictedTerms) || isRestrictedText(title, restrictedTerms))
+    return { restricted: true };
   const metadataWords = metadata.toLowerCase().split(/[^a-z0-9]+/);
   const product = unique(products.filter((name) => metadataWords.includes(name)));
   const assignedLanes = labels.flatMap(
@@ -108,7 +119,7 @@ export function contextualizePriority(
     ...(activeWorkstream && { taskContext: { ...item.taskContext, activeWorkstream: true } }),
     priorityReason:
       lane && team.lanes.includes(lane)
-        ? "Team Nebula priority · " + lane
+        ? "Workspace priority · " + lane
         : "Matches an enabled NEBOS workstream",
   };
 }

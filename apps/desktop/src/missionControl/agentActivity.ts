@@ -12,7 +12,7 @@ import type {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
-import { bindingsAt, connector, obj, rows, str } from "./sources.ts";
+import { bindingsAt, connector, obj, rows, str, type Bindings } from "./sources.ts";
 import { safeProviderUrl } from "./triage.ts";
 
 type Source = MissionControlAgentActivity["sources"][number];
@@ -21,7 +21,6 @@ const execute = NodeUtil.promisify(NodeChildProcess.execFile);
 const codexUrl = "https://chatgpt.com/codex";
 const cursorUrl = "https://cursor.com/agents";
 const claudeUrl = "https://claude.ai/code";
-const nebosUrl = "https://os.teamnebula.ai/";
 const grokUrl = "https://grok.com/";
 
 function trim(value: unknown, maxLength = 180) {
@@ -259,26 +258,24 @@ async function cursorHistory(home: string): Promise<Feed> {
   };
 }
 
-async function claudeLocal(home: string, team: boolean): Promise<Feed> {
+async function claudeLocal(home: string, workspaceDir?: string): Promise<Feed> {
   const result = await cliJson(
     NodePath.join(home, ".local", "bin", "claude"),
     ["agents", "--json", "--all"],
     home,
     {
-      CLAUDE_CONFIG_DIR: team
-        ? NodePath.join(home, "TeamNebula", "team-context")
-        : NodePath.join(home, ".claude"),
+      CLAUDE_CONFIG_DIR: workspaceDir ?? NodePath.join(home, ".claude"),
     },
   );
   if (!Array.isArray(result)) throw new Error("Claude Code returned no session list");
-  const source = team ? "Claude Code · Team Nebula" : "Claude Code · personal";
+  const source = workspaceDir ? "Claude Code · workspace" : "Claude Code · personal";
   return {
     rows: rows(result).flatMap((session) => {
       const sessionId = str(session.sessionId ?? session.session_id ?? session.id);
       if (!sessionId) return [];
       return [
         {
-          id: `claude:${team ? "team" : "personal"}:${sessionId}`,
+          id: `claude:${workspaceDir ? "workspace" : "personal"}:${sessionId}`,
           provider: "claude",
           source,
           title: trim(session.title ?? session.name) || "Claude Code session",
@@ -368,9 +365,7 @@ async function cursorCloud(key: string): Promise<Feed> {
   };
 }
 
-async function nebosRuns(home: string, baseDir: string, now: number): Promise<Feed> {
-  const config = await bindingsAt(baseDir);
-  if (!config?.nebos) throw new Error("NEBOS is not configured");
+async function nebosRuns(home: string, config: Bindings, now: number): Promise<Feed> {
   const api = connector(home);
   const workstreams = (await api.action("CUSTOM_NEBOS_LIST_WORKSTREAMS", config.nebos)).result;
   if (!Array.isArray(workstreams)) throw new Error("NEBOS returned no workstream list");
@@ -400,13 +395,13 @@ async function nebosRuns(home: string, baseDir: string, now: number): Promise<Fe
                 id: `nebos:${str(run.id)}`,
                 provider,
                 source: "NEBOS workstreams",
-                title: trim(stream.title ?? run.taskName) || "Team Nebula workstream",
+                title: trim(stream.title ?? run.taskName) || "NEBOS workstream",
                 detail: [trim(stream.agent, 70), trim(run.triggeredBy, 30)]
                   .filter(Boolean)
                   .join(" · "),
                 status: workstreamStatus(run.status, run.claimedAt, now),
                 updatedAt: timestamp(run.createdAt),
-                url: nebosUrl,
+                url: config.nebosUrl ?? null,
               } satisfies MissionControlAgentRow,
             ];
           });
@@ -420,7 +415,7 @@ async function nebosRuns(home: string, baseDir: string, now: number): Promise<Fe
     rows: runs.flatMap((outcome) => (outcome.status === "fulfilled" ? outcome.value : [])),
     partial: work.length > 30 || runs.some((outcome) => outcome.status === "rejected"),
     detail:
-      "Recent Team Nebula run records. Provider attribution is shown when NEBOS identifies the executor.",
+      "Recent NEBOS run records. Provider attribution is shown when NEBOS identifies the executor.",
   };
 }
 
@@ -429,6 +424,7 @@ export async function loadAgentActivity(
   baseDir: string,
   now: number,
 ): Promise<MissionControlAgentActivity> {
+  const config = await bindingsAt(baseDir);
   const operations: { source: Omit<Source, "coverage" | "detail">; read: Promise<Feed> }[] = [
     { source: { provider: "openai", label: "Codex Cloud", url: codexUrl }, read: codexCloud(home) },
     {
@@ -445,17 +441,21 @@ export async function loadAgentActivity(
     },
     {
       source: { provider: "claude", label: "Claude Code · personal", url: null },
-      read: claudeLocal(home, false),
-    },
-    {
-      source: { provider: "claude", label: "Claude Code · Team Nebula", url: null },
-      read: claudeLocal(home, true),
-    },
-    {
-      source: { provider: "nebos", label: "NEBOS workstreams", url: nebosUrl },
-      read: nebosRuns(home, baseDir, now),
+      read: claudeLocal(home),
     },
   ];
+  if (config?.claudeWorkspaceDir) {
+    operations.push({
+      source: { provider: "claude", label: "Claude Code · workspace", url: null },
+      read: claudeLocal(home, config.claudeWorkspaceDir),
+    });
+  }
+  if (config?.nebos) {
+    operations.push({
+      source: { provider: "nebos", label: "NEBOS workstreams", url: config.nebosUrl ?? null },
+      read: nebosRuns(home, config, now),
+    });
+  }
   const dashboardSources: Source[] = [
     {
       provider: "claude",

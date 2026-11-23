@@ -37,7 +37,7 @@ import {
   sourceStatus,
 } from "../../missionControl/sources.ts";
 import { routeItems } from "../../missionControl/handoff.ts";
-import { contextualizePriority } from "../../missionControl/context.ts";
+import { contextualizePriority, isRestrictedText } from "../../missionControl/context.ts";
 import { scoreMissionControlPriorities } from "../../missionControl/priority.ts";
 import { readSrcos } from "../../missionControl/srcos.ts";
 import { prioritize } from "../../missionControl/triage.ts";
@@ -108,44 +108,69 @@ async function readPriorities(
   const today = DateTime.formatIsoDate(
     DateTime.setZone(DateTime.makeUnsafe(now), DateTime.zoneMakeLocal()),
   );
-  const readContext = async () => {
-    const lanes = (await sharedContext(home)) ?? [];
+  const readContext = async (file: string) => {
+    const lanes = await sharedContext(file);
     return {
       items: [],
       note: lanes.length ? "Shared lane order loaded." : "No explicit lane priority was found.",
       lanes,
-      context: lanes.length ? `Team Nebula lane order · ${lanes.join(" → ")}` : null,
+      context: lanes.length ? `Workspace lane order · ${lanes.join(" → ")}` : null,
     };
   };
   const getSource = (source: Source, account: string, read: () => Promise<SourceRead>) =>
     readPrioritySource(reads, prioritySourceKey(source, account), read, now, request.refresh);
-  const operations: { source: Source; account: string; read: () => Promise<SourceRead> }[] = [
+  const operations: {
+    source: Source;
+    account: string;
+    enabled: boolean;
+    read: () => Promise<SourceRead>;
+  }[] = [
     ...bindings.mail.map((account) => ({
       source: "email" as const,
       account: account.label,
+      enabled: true,
       read: () => readMail(api, account, null, "recent-replies"),
     })),
     {
       source: "slack" as const,
-      account: "Team Nebula",
+      account: "Slack",
+      enabled: Boolean(bindings.slack),
       read: () => readSlack(api, bindings.slack, today),
     },
     {
       source: "linear" as const,
-      account: "Team Nebula",
-      read: () => readLinear(api, bindings.linear),
+      account: "Linear",
+      enabled: Boolean(bindings.linear),
+      read: () => readLinear(api, bindings),
     },
-    { source: "nebos", account: "Team Nebula", read: () => readNebos(api, bindings.nebos) },
-    { source: "srcos", account: "Personal", read: () => readSrcos(home, bindings.srcosTenant) },
-    { source: "tasks", account: "Personal", read: () => readTasks(api, bindings.tasks) },
+    {
+      source: "nebos",
+      account: "NEBOS",
+      enabled: Boolean(bindings.nebos),
+      read: () => readNebos(api, bindings),
+    },
+    {
+      source: "srcos",
+      account: "Personal",
+      enabled: Boolean(bindings.srcosTenant && bindings.srcosCredentialFile),
+      read: () => readSrcos(bindings.srcosCredentialFile!, bindings.srcosTenant),
+    },
+    {
+      source: "tasks",
+      account: "Personal",
+      enabled: Boolean(bindings.tasks),
+      read: () => readTasks(api, bindings.tasks),
+    },
     {
       source: "context" as const,
-      account: "Team Nebula",
-      read: readContext,
+      account: "Workspace",
+      enabled: Boolean(bindings.contextFile),
+      read: () => readContext(bindings.contextFile!),
     },
     {
       source: "context",
       account: "NEBOS workstreams",
+      enabled: Boolean(bindings.nebos),
       read: async () => ({
         items: [],
         note: "Enabled NEBOS workstreams checked.",
@@ -153,8 +178,9 @@ async function readPriorities(
       }),
     },
   ];
+  if (!operations.some(({ enabled }) => enabled)) return empty;
   const scope = missionControlPrioritySources[request.filter ?? "all"];
-  const selected = operations.filter(({ source }) => scope.includes(source));
+  const selected = operations.filter(({ source, enabled }) => enabled && scope.includes(source));
   const entries = selected.map(({ source, account, read }) => getSource(source, account, read));
   const outcomes = await Promise.allSettled(entries.map(({ result }) => result));
   const all = outcomes.flatMap((outcome) =>
@@ -169,16 +195,24 @@ async function readPriorities(
       ];
     return outcome?.status === "fulfilled" ? outcome.value : undefined;
   };
-  const shared = resultFor("context", "Team Nebula");
+  const shared = resultFor("context", "Workspace");
   const personal = resultFor("srcos", "Personal");
   const team = {
     lanes: shared?.lanes ?? [],
     workstreams: resultFor("context", "NEBOS workstreams")?.workstreams ?? [],
   };
   const items = prioritize(
-    [...new Map(all.map((item) => [item.id, item])).values()].map((item) =>
-      contextualizePriority(item, team, personal?.personalFocus ?? []),
-    ),
+    [...new Map(all.map((item) => [item.id, item])).values()].map((item) => {
+      if (isRestrictedText(item.title, bindings.restrictedTerms)) {
+        return { ...item, taskContext: { ...item.taskContext, restricted: true } };
+      }
+      const contextualized = contextualizePriority(item, team, personal?.personalFocus ?? []);
+      const product = contextualized.taskContext?.product;
+      const repository = product && bindings.projectRepositories?.[product];
+      return repository && !contextualized.taskContext?.restricted
+        ? { ...contextualized, taskContext: { ...contextualized.taskContext, repository } }
+        : contextualized;
+    }),
     today,
     team.lanes,
   );
@@ -295,7 +329,7 @@ export const runMissionControlAction = makeIpcMethod({
         const source =
           request.kind === "reply"
             ? prioritySourceKey("email", request.itemId.split(":")[1]!)
-            : prioritySourceKey("linear", "Team Nebula");
+            : prioritySourceKey("linear", "Linear");
         sourceCache?.reads.delete(source);
         return outcome;
       } catch (error) {

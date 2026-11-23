@@ -68,7 +68,11 @@ const item: MissionControlItem = {
   activity: "2026-11-17T00:00:00Z",
   due: null,
   urgency: "high",
-  taskContext: { product: "hypercrawl", workflow: "implementation" },
+  taskContext: {
+    product: "hypercrawl",
+    repository: "example-org/hypercrawl",
+    workflow: "implementation",
+  },
 };
 function installBridge(handoff: MissionControlHandoff) {
   calls.start.mockReset();
@@ -149,7 +153,7 @@ it.each([
       environmentId,
       title: "HyperCrawl",
       workspaceRoot: "/fixture/hypercrawl",
-      repositoryIdentity: { provider: "github", owner: "teamnebula-ai", name: "hypercrawl" },
+      repositoryIdentity: { provider: "github", owner: "example-org", name: "hypercrawl" },
       defaultThreadEnvMode: "worktree",
     } as EnvironmentProject;
     if (kind === "grok_build") {
@@ -274,9 +278,11 @@ it.each([
 
 it.each([
   { source: "linear", blocked: ["grok"], expected: "cursor" },
-  { source: "linear", blocked: ["grok", "cursor"], expected: "cursor_review_secondary" },
-  { source: "linear", blocked: ["grok", "cursor", "cursor_review_secondary"], expected: null },
-  { source: "tasks", blocked: ["grok", "cursor", "cursor_review_secondary"], expected: null },
+  { source: "linear", blocked: ["grok", "cursor"], expected: "cursor-alternate" },
+  { source: "linear", blocked: ["grok", "cursor", "cursor-alternate"], expected: null },
+  { source: "tasks", blocked: ["grok"], expected: "cursor" },
+  { source: "tasks", blocked: ["grok", "cursor"], expected: "cursor-alternate" },
+  { source: "tasks", blocked: ["grok", "cursor", "cursor-alternate"], expected: null },
   { source: "tasks", blocked: ["grok"], expected: "cursor", cursorAutoLimitOnly: true },
 ] as const)(
   "uses $expected for $source with signed-in accounts at their limits ($blocked)",
@@ -289,7 +295,7 @@ it.each([
       ["grok", "grok", "Grok", "grok-4.7", ["subscription"]],
       ["cursor", "cursor", "Cursor", "default", ["autoPercentUsed", "apiPercentUsed"]],
       [
-        "cursor_review_secondary",
+        "cursor-alternate",
         "cursor",
         "Cursor Alternate",
         "default",

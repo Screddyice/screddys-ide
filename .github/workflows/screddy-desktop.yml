@@ -58,6 +58,7 @@ jobs:
         run: |
           node apps/web/node_modules/playwright/cli.js install --only-shell chromium
           pnpm --filter @t3tools/shared exec vp test run src/usageLimits.test.ts
+          pnpm --filter @t3tools/desktop exec vp test run src/missionControl src/ipc/methods/missionControl.test.ts
           pnpm --filter @t3tools/web exec vp test run --project browser \
             src/components/MissionControlHandoffButton.browser.test.tsx \
             src/components/MissionControlPriorities.browser.test.tsx \
@@ -88,7 +89,7 @@ jobs:
           shasum -a 256 "$dmg" "$zip" > SHA256SUMS
           shasum -a 256 -c SHA256SUMS
 
-      - name: Upload private preview packages
+      - name: Upload preview packages
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

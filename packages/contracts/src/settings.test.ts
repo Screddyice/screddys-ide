@@ -41,6 +41,16 @@ const encodeServerSettings = Schema.encodeSync(ServerSettings);
 const encodeServerSettingsPatch = Schema.encodeSync(ServerSettingsPatch);
 const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
 
+it("requires opt-in for provider update installation and desktop control", () => {
+  expect(decodeServerSettings({})).toMatchObject({
+    autoInstallProviderUpdates: false,
+    enableAgentComputerUse: false,
+  });
+  expect(
+    decodeServerSettings({ autoInstallProviderUpdates: true, enableAgentComputerUse: true }),
+  ).toMatchObject({ autoInstallProviderUpdates: true, enableAgentComputerUse: true });
+});
+
 describe("storage cleanup settings", () => {
   it("keeps cleanup disabled for existing installations", () => {
     expect(decodeServerSettings({}).worktreeCleanup).toBeNull();

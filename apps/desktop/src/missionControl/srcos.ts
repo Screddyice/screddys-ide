@@ -1,14 +1,11 @@
-// @effect-diagnostics nodeBuiltinImport:off -- Reads the existing owner-only SRCOS credential for the desktop feed.
+// @effect-diagnostics nodeBuiltinImport:off -- Reads the configured owner-only SRCOS credential for the desktop feed.
+import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeHttps from "node:https";
-import * as NodePath from "node:path";
-import * as NodeUtil from "node:util";
 import type { MissionControlItem } from "@t3tools/contracts";
-import { obj, str } from "./sources.ts";
+import { httpsOrigin, obj, str } from "./sources.ts";
 import { personalFocusTerms } from "./context.ts";
 
-const origin = "https://os.shawn-reddy.com";
-const tokenKey = "NEBOS_OS_BEARER_TOKEN";
 const taskLimit = 200;
 const openStatuses = ["todo", "in_progress", "review", "blocked"] as const;
 
@@ -16,24 +13,30 @@ function plain(value: unknown, limit: number) {
   return str(value).replace(/\s+/g, " ").trim().slice(0, limit);
 }
 
-async function srcosToken(home: string): Promise<string> {
-  // This is the same private credential file used by the installed SRCOS gateway adapter.
-  const file = NodePath.join(home, "projects", ".env");
-  const info = await NodeFSP.lstat(file);
-  if (!info.isFile() || (info.mode & 0o077) !== 0 || info.uid !== process.getuid?.()) {
-    throw new Error("SRCOS credential file unavailable");
+async function srcosCredentials(file: string) {
+  const handle = await NodeFSP.open(
+    file,
+    NodeFS.constants.O_RDONLY | NodeFS.constants.O_NOFOLLOW | NodeFS.constants.O_NONBLOCK,
+  );
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || (info.mode & 0o077) !== 0 || info.uid !== process.getuid?.()) {
+      throw new Error("SRCOS credential file unavailable");
+    }
+    // Store the token and its destination in the same owner-only file.
+    const config = obj(JSON.parse(await handle.readFile("utf8")));
+    const origin = httpsOrigin(config.origin);
+    const token = str(config.token);
+    if (!origin || !token || token.startsWith("${") || /\s/.test(token))
+      throw new Error("SRCOS credential or origin missing");
+    return { origin, token };
+  } finally {
+    await handle.close();
   }
-  const entry = (await NodeFSP.readFile(file, "utf8"))
-    .split(/\r?\n/)
-    .filter((line) => /^\s*(?:export\s+)?NEBOS_OS_BEARER_TOKEN\s*=/.test(line));
-  const token = entry.length === 1 ? NodeUtil.parseEnv(entry[0]!)[tokenKey] : undefined;
-  if (!token || token.startsWith("${") || /\s/.test(token))
-    throw new Error("SRCOS credential missing");
-  return token;
 }
 
 async function readTool(
-  token: string,
+  credentials: { origin: string; token: string },
   name: "task_list" | "knowledge_search",
   args: { status: (typeof openStatuses)[number]; limit: number } | { query: "Mission Control" },
 ): Promise<unknown> {
@@ -46,12 +49,12 @@ async function readTool(
   const { body, contentType } = await new Promise<{ body: string; contentType: string }>(
     (resolve, reject) => {
       const request = NodeHttps.request(
-        origin + "/api/mcp",
+        credentials.origin + "/api/mcp",
         {
           method: "POST",
           signal: AbortSignal.timeout(12_000),
           headers: {
-            Authorization: "Bearer " + token,
+            Authorization: "Bearer " + credentials.token,
             Accept: "application/json, text/event-stream",
             "Content-Type": "application/json",
             "Content-Length": Buffer.byteLength(payload),
@@ -104,7 +107,11 @@ async function readTool(
   return inner.result;
 }
 
-export function srcosItems(rows: unknown[], tenantId: string): MissionControlItem[] {
+export function srcosItems(
+  rows: unknown[],
+  tenantId: string,
+  origin: string,
+): MissionControlItem[] {
   if (rows.some((row) => obj(row).tenantId !== tenantId)) {
     throw new Error("SRCOS tenant does not match the local binding");
   }
@@ -137,18 +144,20 @@ export function srcosItems(rows: unknown[], tenantId: string): MissionControlIte
   });
 }
 
-export async function readSrcos(home: string, tenantId: string) {
+export async function readSrcos(credentialFile: string, tenantId: string) {
   if (!tenantId) throw new Error("SRCOS tenant is not configured");
-  const token = await srcosToken(home);
+  const credentials = await srcosCredentials(credentialFile);
   const [taskReads, documents] = await Promise.all([
     Promise.allSettled(
       openStatuses.map(async (status) => {
-        const rows = obj(await readTool(token, "task_list", { status, limit: taskLimit })).tasks;
+        const rows = obj(
+          await readTool(credentials, "task_list", { status, limit: taskLimit }),
+        ).tasks;
         if (!Array.isArray(rows)) throw new Error("SRCOS returned no task list");
         return rows as unknown[];
       }),
     ),
-    readTool(token, "knowledge_search", { query: "Mission Control" }).then(
+    readTool(credentials, "knowledge_search", { query: "Mission Control" }).then(
       (value) => (Array.isArray(value) ? value.map(obj) : null),
       () => null,
     ),
@@ -156,7 +165,7 @@ export async function readSrcos(home: string, tenantId: string) {
   const records = taskReads.flatMap((read) => (read.status === "fulfilled" ? read.value : []));
   const taskAvailable = taskReads.some((read) => read.status === "fulfilled");
   if (!taskAvailable) throw new Error("SRCOS tasks unavailable");
-  const items = srcosItems(records, tenantId);
+  const items = srcosItems(records, tenantId, credentials.origin);
   const doc = documents?.find(({ title }) =>
     ["srcos mission control", "mission control"].includes(str(title).trim().toLowerCase()),
   );

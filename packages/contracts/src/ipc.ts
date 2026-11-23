@@ -1071,6 +1071,7 @@ const MissionControlTaskContextSchema = Schema.Struct({
     Schema.Literals(["implementation", "review", "outreach", "research", "productivity"]),
   ),
   lane: Schema.optional(Schema.String.check(Schema.isPattern(/^L(?:10|[1-9])$/))),
+  repository: Schema.optional(Schema.String.check(Schema.isPattern(/^[a-z0-9-]+\/[a-z0-9_.-]+$/))),
   activeWorkstream: Schema.optional(Schema.Boolean),
   restricted: Schema.optional(Schema.Boolean),
 });

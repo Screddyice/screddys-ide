@@ -34,7 +34,7 @@ const filters = [
   ["all", "All"],
   ["email", "Email replies"],
   ["slack", "Slack replies"],
-  ["team", "Team Nebula work"],
+  ["team", "Workspace tasks"],
   ["tasks", "Personal tasks"],
   ["srcos", "SRCOS"],
 ] as const;

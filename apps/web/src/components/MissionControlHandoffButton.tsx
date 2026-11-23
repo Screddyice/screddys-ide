@@ -58,7 +58,6 @@ import { toastManager } from "./ui/toast";
 type IdeAgent = "grok" | "cursor" | "codex" | "claudeAgent";
 const agentNames = { grok: "Grok", cursor: "Cursor", codex: "GPT", claudeAgent: "Claude" };
 const unavailable: MissionControlHandoff = { kind: "unavailable" };
-const teamRepositories = { nebos: "nebos-v2", hyperscale: "hyperscale", hypercrawl: "hypercrawl" };
 
 function alternateDriver(agent: IdeAgent): IdeAgent | undefined {
   if (agent === "grok") return "cursor";
@@ -131,19 +130,17 @@ function resolveMissionControlProject(
   item: MissionControlItem,
   projects: readonly EnvironmentProject[],
 ) {
-  const product = item.taskContext?.product;
+  const repository = item.taskContext?.repository;
   if (
-    !product ||
+    !repository ||
     item.taskContext?.restricted ||
     (item.source !== "linear" && item.source !== "nebos")
   )
     return undefined;
-  const name = teamRepositories[product];
   const candidates = projects.filter(
     ({ repositoryIdentity: identity }) =>
       identity?.provider === "github" &&
-      identity.owner?.toLowerCase() === "teamnebula-ai" &&
-      identity.name?.toLowerCase() === name,
+      `${identity.owner}/${identity.name}`.toLowerCase() === repository,
   );
   return candidates.length === 1 ? candidates[0] : undefined;
 }
@@ -160,7 +157,7 @@ function taskBrief(item: MissionControlItem) {
       : []),
     ...(item.source === "linear" || item.source === "nebos"
       ? [
-          "Verify linked Team Nebula work in its source and consult the matching shared project context before acting.",
+          "Verify linked workspace work in its source and consult the matching shared project context before acting.",
         ]
       : []),
     "",
