@@ -235,6 +235,9 @@ it("filters the cross-source queue and pages through mail for the selected accou
       .element(screen.getByText("Personal workspace guidance", { exact: false }))
       .not.toBeInTheDocument();
     await screen.getByRole("button", { name: "Personal mail" }).click();
+    await expect
+      .element(screen.getByRole("heading", { name: "All Mail · Personal" }))
+      .toBeVisible();
     await expect.element(screen.getByText("Recent email")).toBeVisible();
     await screen.getByRole("button", { name: "Next" }).click();
     await expect.element(screen.getByText("Older email")).toBeVisible();

@@ -17,7 +17,7 @@ import {
   PlusIcon,
   ServerIcon,
 } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import { openCommandPalette } from "../commandPaletteBus";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
@@ -44,6 +44,7 @@ import { ProjectFavicon } from "./ProjectFavicon";
 import { sortScopedProjectsForSidebar } from "./Sidebar.logic";
 import { WorkspacePageHeader } from "./WorkspacePageHeader";
 import { Button } from "./ui/button";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/select";
 import { SidebarInset } from "./ui/sidebar";
 import { toastManager } from "./ui/toast";
 
@@ -64,6 +65,11 @@ const threadStatuses = {
 const runningStatuses = new Set(["preparing", "working"]);
 const attentionStatuses = new Set(["approval", "input", "request", "failed", "limited"]);
 
+const panelLabels = {
+  priorities: "Top priorities",
+  activity: "Agent activity",
+} as const;
+
 const views = [
   { id: "recent", title: "Recent threads", empty: "No recent threads.", icon: HistoryIcon },
   { id: "running", title: "Running", empty: "No threads are running.", icon: ActivityIcon },
@@ -83,9 +89,10 @@ function projectKey(project: EnvironmentProject) {
 }
 
 export function MissionControlPage() {
-  const [panel, setPanel] = useState<"priorities" | "activity">("priorities");
+  const [panel, setPanel] = useState<keyof typeof panelLabels>("priorities");
   const [view, setView] = useState<(typeof views)[number]["id"]>("recent");
   const [showAllProjects, setShowAllProjects] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const threadListId = useId();
   const projectListId = useId();
   const allProjects = useProjects();
@@ -156,7 +163,31 @@ export function MissionControlPage() {
       {...workspaceAreaProps("home", 1, "Mission Control")}
       className="h-dvh min-h-0 overflow-hidden overscroll-y-none"
     >
-      <WorkspacePageHeader electron className="justify-end">
+      <WorkspacePageHeader electron className="justify-between">
+        <Select
+          value={panel}
+          onValueChange={(value) => {
+            if (value !== panel && (value === "priorities" || value === "activity")) {
+              setPanel(value);
+              scrollRef.current?.scrollTo({ top: 0 });
+            }
+          }}
+        >
+          <SelectTrigger
+            aria-label="Mission Control view"
+            size="sm"
+            className="w-auto shrink-0 [-webkit-app-region:no-drag]"
+          >
+            <SelectValue>{panelLabels[panel]}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup alignItemWithTrigger={false}>
+            {Object.entries(panelLabels).map(([id, label]) => (
+              <SelectItem key={id} value={id}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
         <SplitThreadButton
           layout={{
             paneCount: 1,
@@ -166,7 +197,10 @@ export function MissionControlPage() {
           }}
         />
       </WorkspacePageHeader>
-      <div className="@container scrollbar-gutter-both min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div
+        ref={scrollRef}
+        className="@container scrollbar-gutter-both min-h-0 flex-1 overflow-y-auto overscroll-contain"
+      >
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-5 pt-4 pb-10 @sm:px-7 @xl:pt-7">
           <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4 border-b border-border pb-5">
             <div className="flex min-w-0 items-center gap-3">
@@ -185,36 +219,15 @@ export function MissionControlPage() {
             </div>
           </header>
 
-          <div className="space-y-4">
-            <nav aria-label="Mission Control views" className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant={panel === "priorities" ? "secondary" : "ghost"}
-                aria-pressed={panel === "priorities"}
-                onClick={() => setPanel("priorities")}
-              >
-                Priorities
-              </Button>
-              <Button
-                size="sm"
-                variant={panel === "activity" ? "secondary" : "ghost"}
-                aria-pressed={panel === "activity"}
-                onClick={() => setPanel("activity")}
-              >
-                <ActivityIcon className="size-4" aria-hidden />
-                Agent activity
-              </Button>
-            </nav>
-            {panel === "priorities" ? (
-              <MissionControlPriorities />
-            ) : (
-              <MissionControlAgentActivity
-                threads={threads}
-                projects={allProjects}
-                environments={environments}
-              />
-            )}
-          </div>
+          {panel === "priorities" ? (
+            <MissionControlPriorities />
+          ) : (
+            <MissionControlAgentActivity
+              threads={threads}
+              projects={allProjects}
+              environments={environments}
+            />
+          )}
 
           <div className="grid grid-cols-1 gap-2 @sm:grid-cols-3">
             {views.map(({ id, title, icon: Icon }) => (

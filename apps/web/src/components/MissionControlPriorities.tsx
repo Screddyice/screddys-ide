@@ -232,7 +232,7 @@ export function MissionControlPriorities() {
   const heading = account
     ? `${replies ? "Inbox reply candidates" : "All Mail"} · ${account}`
     : filter === "all"
-      ? "Your priorities"
+      ? "Top priorities"
       : filterLabel;
   const loadingLabel = account
     ? `${account} mail`
