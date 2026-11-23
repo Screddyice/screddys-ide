@@ -84,6 +84,15 @@ const completeIssueMutation = `mutation ScreddyCompleteIssue($id: String!, $stat
 
 const proxyOrigins = { gmail: "https://gmail.googleapis.com", slack: "https://slack.com" };
 
+function googleTaskUrl(list: string, task: string) {
+  return (
+    "https://tasks.googleapis.com/tasks/v1/lists/" +
+    encodeURIComponent(list) +
+    "/tasks/" +
+    encodeURIComponent(task)
+  );
+}
+
 export function obj(input: unknown): Obj {
   return input && typeof input === "object" && !Array.isArray(input) ? (input as Obj) : {};
 }
@@ -226,7 +235,13 @@ export function connector(home: string) {
     return data;
   }
 
-  function post(toolkit: "gmail" | "linear", account: string, url: string, data: Obj) {
+  function post(
+    toolkit: "gmail" | "linear" | "googletasks",
+    account: string,
+    url: string,
+    data: Obj,
+    method: "POST" | "PATCH" = "POST",
+  ) {
     if (!account) throw new Error("Account required");
     return run(
       [
@@ -237,7 +252,7 @@ export function connector(home: string) {
         "--account",
         account,
         "-X",
-        "POST",
+        method,
         "-H",
         "Content-Type: application/json",
         "-d",
@@ -282,6 +297,26 @@ export function connector(home: string) {
     },
     completeLinearIssue(account: string, id: string, state: string) {
       return linearGraphql(account, completeIssueMutation, { id, state });
+    },
+    async googleTask(account: string, list: string, task: string) {
+      if (!account) throw new Error("Account required");
+      return run([
+        "proxy",
+        googleTaskUrl(list, task),
+        "--toolkit",
+        "googletasks",
+        "--account",
+        account,
+      ]);
+    },
+    completeGoogleTask(account: string, list: string, task: string) {
+      return post(
+        "googletasks",
+        account,
+        googleTaskUrl(list, task),
+        { status: "completed" },
+        "PATCH",
+      );
     },
     sendGmailReply(account: string, threadId: string, raw: string) {
       return post("gmail", account, proxyOrigins.gmail + "/gmail/v1/users/me/messages/send", {

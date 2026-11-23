@@ -89,11 +89,18 @@ it("sends the reviewed reply and completes the exact Linear row on its own butto
     title: "Fix checkout test",
     account: "Example workspace",
   };
+  const task: MissionControlItem = {
+    ...reply,
+    id: "tasks:MTgxNjU4MDY0:dGFzay0x",
+    source: "tasks",
+    title: "Renew passport",
+    canReply: false,
+  };
   const getMissionControl = vi.fn<DesktopBridge["getMissionControl"]>().mockResolvedValue({
     configured: true,
     fetchedAt: null,
     mailboxes: ["Personal"],
-    items: [reply, issue],
+    items: [reply, issue, task],
     sources: [],
     context: null,
     nextCursor: null,
@@ -113,7 +120,8 @@ it("sends the reviewed reply and completes the exact Linear row on its own butto
     .fn<DesktopBridge["runMissionControlAction"]>()
     .mockResolvedValueOnce({ ok: false, error: "Could not confirm the reply." })
     .mockResolvedValueOnce({ ok: true, message: "Reply sent." })
-    .mockResolvedValueOnce({ ok: true, message: "Marked complete in Linear." });
+    .mockResolvedValueOnce({ ok: true, message: "Marked complete in Linear." })
+    .mockResolvedValueOnce({ ok: true, message: "Marked complete in Google Tasks." });
   const previousBridge = window.desktopBridge;
   window.desktopBridge = {
     ...previousBridge,
@@ -147,11 +155,18 @@ it("sends the reviewed reply and completes the exact Linear row on its own butto
       body: "I’ll review today.",
     });
 
-    await screen.getByRole("button", { name: "Mark complete" }).click();
+    await screen.getByRole("button", { name: "Mark complete" }).first().click();
     await expect.element(screen.getByText("Fix checkout test")).not.toBeInTheDocument();
     expect(runMissionControlAction).toHaveBeenNthCalledWith(3, {
       kind: "complete-linear",
       itemId: issue.id,
+    });
+
+    await screen.getByRole("button", { name: "Mark complete" }).click();
+    await expect.element(screen.getByText("Renew passport")).not.toBeInTheDocument();
+    expect(runMissionControlAction).toHaveBeenNthCalledWith(4, {
+      kind: "complete-task",
+      itemId: task.id,
     });
   } finally {
     if (previousBridge) window.desktopBridge = previousBridge;

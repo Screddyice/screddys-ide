@@ -44,21 +44,24 @@ export function MissionControlItemAction({
     setWorking(true);
     try {
       const result = await bridge.runMissionControlAction({
-        kind: "complete-linear",
+        kind: item.source === "tasks" ? "complete-task" : "complete-linear",
         itemId: item.id,
       });
       if (result.ok) onDone(result);
       else
         toastManager.add({
           type: "error",
-          title: "Could not complete issue",
+          title: item.source === "tasks" ? "Could not complete task" : "Could not complete issue",
           description: result.error,
         });
     } catch {
       toastManager.add({
         type: "error",
-        title: "Could not complete issue",
-        description: "Check the issue in Linear.",
+        title: item.source === "tasks" ? "Could not complete task" : "Could not complete issue",
+        description:
+          item.source === "tasks"
+            ? "Check the task in Google Tasks."
+            : "Check the issue in Linear.",
       });
     } finally {
       pending.current = false;
@@ -66,7 +69,7 @@ export function MissionControlItemAction({
     }
   };
 
-  if (item.source === "linear") {
+  if (item.source === "linear" || item.source === "tasks") {
     return (
       <Button
         variant="outline"

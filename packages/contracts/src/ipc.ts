@@ -1119,6 +1119,10 @@ export const MissionControlActionRequestSchema = Schema.Union([
     kind: Schema.Literal("complete-linear"),
     itemId: MissionControlActionItemIdSchema,
   }),
+  Schema.Struct({
+    kind: Schema.Literal("complete-task"),
+    itemId: MissionControlActionItemIdSchema,
+  }),
 ]);
 export const MissionControlActionResultSchema = Schema.Union([
   MissionControlActionErrorSchema,

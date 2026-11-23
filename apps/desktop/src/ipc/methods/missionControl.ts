@@ -22,6 +22,7 @@ import * as Effect from "effect/Effect";
 import * as DesktopEnvironment from "../../app/DesktopEnvironment.ts";
 import {
   completeMissionControlIssue,
+  completeMissionControlTask,
   MissionControlActionError,
   previewMissionControlReply,
   sendMissionControlReply,
@@ -339,11 +340,15 @@ export const runMissionControlAction = makeIpcMethod({
         const outcome =
           request.kind === "reply"
             ? await sendMissionControlReply(api, bindings, environment.baseDir, request)
-            : await completeMissionControlIssue(api, bindings, request.itemId);
+            : request.kind === "complete-task"
+              ? await completeMissionControlTask(api, bindings, request.itemId)
+              : await completeMissionControlIssue(api, bindings, request.itemId);
         const source =
           request.kind === "reply"
             ? prioritySourceKey("email", request.itemId.split(":")[1]!)
-            : prioritySourceKey("linear", "Linear");
+            : request.kind === "complete-task"
+              ? prioritySourceKey("tasks", "Personal")
+              : prioritySourceKey("linear", "Linear");
         sourceCache?.reads.delete(source);
         return outcome;
       } catch (error) {
