@@ -1,5 +1,8 @@
 import type { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 
+export const COMPUTER_USE_MCP_SERVER_NAME = "screddy-computer-use";
+export const COMPUTER_USE_MCP_ARGS = ["mcp"] as const;
+
 export interface McpProviderSessionConfig {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
@@ -9,6 +12,7 @@ export interface McpProviderSessionConfig {
   readonly authorizationHeader: string;
   /** Omit preview_* instructions when the user withholds agent browser access. */
   readonly browserToolsAvailable: boolean;
+  readonly computerUseCommand?: string;
   readonly capabilities?: ReadonlySet<string>;
   readonly agentDeviceEnvironment?: Readonly<Record<string, string>>;
 }

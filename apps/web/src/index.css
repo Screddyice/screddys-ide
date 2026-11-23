@@ -2590,6 +2590,32 @@ code {
   }
 }
 
+/* Both the primary thread and embedded threads share the compact split layout. */
+[data-split-layout-active] [data-chat-composer-overlay] {
+  padding-top: 0.25rem;
+}
+
+[data-split-layout-active] [data-chat-composer-body] {
+  padding-block: 0.375rem 0.25rem;
+}
+
+[data-split-layout-active] [data-chat-composer-body] .composer-tiptap {
+  min-height: calc(1lh + 0.5rem);
+  max-height: 6rem;
+}
+
+[data-split-layout-active] [data-chat-composer-footer] {
+  padding-bottom: 0.25rem;
+}
+
+[data-split-layout-active] [data-slot="composer-context-strip"] {
+  padding-top: 0.25rem;
+}
+
+[data-split-layout-active] [data-chat-composer-bottom-inset] {
+  height: calc(env(safe-area-inset-bottom) + 0.5rem);
+}
+
 /* A workspace area with no control of its own takes F6 focus itself; keep that visible.
    workspaceFocus.ts marks those, since :focus-visible also matches a clicked area after a key press. */
 [data-workspace-area]:focus-visible {

@@ -749,6 +749,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "environment-defaults",
   },
   {
+    id: "auto-install-provider-updates",
+    title: "Automatically update provider tools",
+    to: "/settings/maintenance",
+    scope: "environment-defaults",
+    searchTerms: ["upgrade CLI enabled provider official versions automatic"],
+  },
+  {
     id: "continue-threads-after-server-update",
     title: "Continue threads after restarts",
     to: "/settings/maintenance",
@@ -984,6 +991,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/browser",
     scope: "project-defaults",
     searchTerms: ["allow disable enable open drive preview tools sessions project override"],
+  },
+  {
+    id: "agent-computer-use",
+    title: "Computer Use",
+    to: "/settings/browser",
+    scope: "project-defaults",
+    searchTerms: ["desktop apps mac accessibility screen recording Cua Driver MCP"],
   },
   {
     id: "device-sources",

@@ -1576,6 +1576,33 @@ function BrowserProfilesSetting({ disabled }: { readonly disabled: boolean }) {
   );
 }
 
+function AgentComputerUseSetting() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+
+  return (
+    <SettingsRow
+      serverScoped
+      settingKeys={["enableAgentComputerUse"]}
+      {...searchableSetting("agent-computer-use")}
+      description={
+        settings.enableAgentBrowserAccess
+          ? "New chats can use apps on the environment’s Mac when Cua Driver has macOS permissions."
+          : "Enable Agent browser access to make Computer Use available."
+      }
+      control={
+        <ScopedSwitch
+          settingKeys={["enableAgentComputerUse"]}
+          aria-label="Computer Use"
+          checked={settings.enableAgentBrowserAccess && settings.enableAgentComputerUse}
+          disabled={!settings.enableAgentBrowserAccess}
+          onCheckedChange={(enabled) => updateSettings({ enableAgentComputerUse: enabled })}
+        />
+      }
+    />
+  );
+}
+
 export function BrowserSettingsPanel() {
   const desktopOnly = !isElectron;
   const desktopOnlyMessage = desktopOnly ? "Only available in the desktop app." : undefined;
@@ -1584,6 +1611,7 @@ export function BrowserSettingsPanel() {
     <SettingsPageContainer>
       <SettingsSection id="browser-agent-access" title="Agent access">
         <AgentBrowserAccessSetting />
+        <AgentComputerUseSetting />
       </SettingsSection>
       <SettingsSection id="browser" title="Browsing">
         <SettingsUnavailableGroup message={desktopOnlyMessage}>

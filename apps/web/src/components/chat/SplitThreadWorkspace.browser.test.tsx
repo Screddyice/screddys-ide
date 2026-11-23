@@ -350,6 +350,60 @@ it("resizes shared columns and rows and keeps the same pane elements", async () 
   expect(pane(3)).toBe(right);
 });
 
+it.each([
+  { axis: "x", handleName: "Resize pane widths", dimension: "width" },
+  { axis: "y", handleName: "Resize pane rows 1 and 2", dimension: "height" },
+] as const)(
+  "regrabs the $axis divider after a release over another pane",
+  async ({ axis, handleName, dimension }) => {
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    await using _restoreViewport = {
+      [Symbol.asyncDispose]: () => page.viewport(viewport.width, viewport.height),
+    };
+    await page.viewport(1000, 720);
+    await using screen = await render(
+      <div className="flex h-dvh min-w-0 flex-col">
+        <SplitThreadWorkspace standalone initialPaneCount={4} />
+      </div>,
+    );
+    const first = screen.getByRole("region", { name: "Pane 1", exact: true }).element();
+    const next = screen
+      .getByRole("region", { name: axis === "x" ? "Pane 2" : "Pane 3", exact: true })
+      .element();
+    const handle = screen.getByRole("separator", { name: handleName }).element();
+    // The macOS input trace delivered move and release outside the divider
+    // without activating the pointer capture requested during pointerdown.
+    using _capture = vi.spyOn(handle, "setPointerCapture").mockImplementation(() => {});
+    const initial = first.getBoundingClientRect()[dimension];
+
+    async function drag(delta: number, destination: Element) {
+      const rect = handle.getBoundingClientRect();
+      const clientX = rect.x + rect.width / 2;
+      const clientY = rect.y + rect.height / 2;
+      const pointer = { bubbles: true, cancelable: true, isPrimary: true, pointerId: 1 };
+      await act(() => {
+        handle.dispatchEvent(
+          new PointerEvent("pointerdown", { ...pointer, buttons: 1, clientX, clientY }),
+        );
+        const released = {
+          ...pointer,
+          clientX: clientX + (axis === "x" ? delta : 0),
+          clientY: clientY + (axis === "y" ? delta : 0),
+        };
+        destination.dispatchEvent(new PointerEvent("pointermove", released));
+        destination.dispatchEvent(new PointerEvent("pointerup", released));
+      });
+    }
+
+    await drag(72, next);
+    expect(first.getBoundingClientRect()[dimension]).toBeCloseTo(initial + 72, 0);
+    await drag(-72, first);
+    expect(first.getBoundingClientRect()[dimension]).toBeCloseTo(initial, 0);
+    await drag(48, next);
+    expect(first.getBoundingClientRect()[dimension]).toBeCloseTo(initial + 48, 0);
+  },
+);
+
 it("opens a dragged sidebar thread in the blank pane without replacing another thread", async () => {
   await using screen = await render(
     <div className="flex h-dvh min-w-0 flex-col">

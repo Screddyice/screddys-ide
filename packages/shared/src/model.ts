@@ -102,8 +102,20 @@ function canonicalModelSelectionOptions(
   );
 }
 
+/** A different model or provider instance requires routing to a new turn. */
+export function modelTargetChanged(
+  previous: ModelSelection | null | undefined,
+  next: ModelSelection | null | undefined,
+): boolean {
+  return (
+    previous != null &&
+    next != null &&
+    (previous.instanceId !== next.instanceId || previous.model !== next.model)
+  );
+}
+
 export function modelSelectionsEqual(left: ModelSelection, right: ModelSelection): boolean {
-  if (left.instanceId !== right.instanceId || left.model !== right.model) {
+  if (modelTargetChanged(left, right)) {
     return false;
   }
   const leftOptions = canonicalModelSelectionOptions(left);

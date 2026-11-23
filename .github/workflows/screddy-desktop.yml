@@ -1,24 +1,27 @@
 name: Package Screddy for Apple Silicon
 
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       version:
-        description: Preview version, such as 0.1.37-preview.20261122.1
+        description: Preview version, such as 0.1.42-preview.20261122.1
         required: true
-        default: 0.1.37-preview.20261122.1
+        default: 0.1.42-preview.20261122.1
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: screddy-desktop-preview
-  cancel-in-progress: false
+  group: screddy-desktop-preview-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   package:
-    if: github.repository == 'Screddyice/screddys-ide' && github.ref == 'refs/heads/main'
+    name: ${{ github.event_name == 'pull_request' && 'Verify Screddy changes' || 'Build Apple Silicon packages' }}
+    if: github.repository == 'Screddyice/screddys-ide' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
     runs-on: macos-15
     timeout-minutes: 30
     env:
@@ -27,6 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -34,26 +38,35 @@ jobs:
           node-version-file: package.json
           cache: pnpm
 
+      - name: Verify runner and Node version
+        shell: bash
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(node -p 'process.version')" = "v$(node -p 'require("./package.json").engines.node')"
+
       - name: Validate build inputs
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]{8}\.[0-9]+$ ]]
-          test "$(uname -m)" = arm64
-          test "$(node -p 'process.version')" = "v$(node -p 'require("./package.json").engines.node')"
           rustup target add aarch64-apple-darwin
 
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify Mission Control fallback
+      - name: Verify Mission Control and chat regressions
         run: |
           node apps/web/node_modules/playwright/cli.js install --only-shell chromium
           pnpm --filter @t3tools/shared exec vp test run src/usageLimits.test.ts
           pnpm --filter @t3tools/web exec vp test run --project browser \
             src/components/MissionControlHandoffButton.browser.test.tsx \
-            src/components/MissionControlPriorities.browser.test.tsx
+            src/components/MissionControlPriorities.browser.test.tsx \
+            src/components/ChatView.modelPick.browser.test.tsx \
+            src/components/ChatView.splitComposer.browser.test.tsx \
+            src/components/chat/SplitThreadWorkspace.browser.test.tsx
 
       - name: Build Apple Silicon DMG and ZIP
+        if: github.event_name == 'workflow_dispatch'
         run: |
           cp .env.example .env
           pnpm exec node scripts/build-desktop-artifact.ts \
@@ -61,6 +74,7 @@ jobs:
             --build-version "$RELEASE_VERSION" --output-dir "$RUNNER_TEMP/screddy-packages"
 
       - name: Verify artifacts and write checksums
+        if: github.event_name == 'workflow_dispatch'
         working-directory: ${{ runner.temp }}/screddy-packages
         run: |
           dmg="Screddy-$RELEASE_VERSION-arm64.dmg"
@@ -75,6 +89,7 @@ jobs:
           shasum -a 256 -c SHA256SUMS
 
       - name: Upload private preview packages
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: Screddy-${{ inputs.version }}-arm64

@@ -42,7 +42,7 @@ import {
   scopeProjectRef,
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
-import { createModelSelection } from "@t3tools/shared/model";
+import { createModelSelection, modelTargetChanged } from "@t3tools/shared/model";
 import { type SetStateAction, useLayoutEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
@@ -169,6 +169,7 @@ interface ComposerSendInput {
   readonly activeProject: EnvironmentProject | null;
   readonly activeProjectDefaultModelSelection: ModelSelection | null;
   readonly activeMessageCount: number;
+  readonly activeRunModelSelection: ModelSelection | undefined;
   readonly isServerThread: boolean;
   readonly isLocalDraftThread: boolean;
   readonly isGitRepo: boolean;
@@ -266,6 +267,7 @@ export function useComposerSend(input: ComposerSendInput) {
     activeProject,
     activeProjectDefaultModelSelection,
     activeMessageCount,
+    activeRunModelSelection,
     isServerThread,
     isLocalDraftThread,
     isGitRepo,
@@ -506,10 +508,16 @@ export function useComposerSend(input: ComposerSendInput) {
       return;
     }
     const multipleModelSelections = sendCtx.multipleModelSelections;
-    const approvalFeedbackTarget = pendingApprovalsRef.current.find(
-      (approval) =>
-        approval.supportsFeedback && approval.requestId === sendCtx.shownPendingApprovalIds[0],
+    const queuesModelChange = modelTargetChanged(
+      activeRunModelSelection,
+      sendCtx.selectedModelSelection,
     );
+    const approvalFeedbackTarget = queuesModelChange
+      ? undefined
+      : pendingApprovalsRef.current.find(
+          (approval) =>
+            approval.supportsFeedback && approval.requestId === sendCtx.shownPendingApprovalIds[0],
+        );
     const multipleModelBlock =
       multipleModelSelections === null
         ? null
@@ -756,7 +764,7 @@ export function useComposerSend(input: ComposerSendInput) {
       resumeCompactionTokens,
       keepFullHistory,
       phase,
-      dispatchMode,
+      dispatchMode: queuesModelChange ? "queue" : dispatchMode,
       freshContext: freshArm !== undefined,
     });
     if (missingWorktreeBaseBranch) {
@@ -896,6 +904,7 @@ export function useComposerSend(input: ComposerSendInput) {
     if (
       turnUsesAttachmentUploads &&
       composerAttachmentsSnapshot.length > 0 &&
+      !queuesModelChange &&
       (sendCtx?.shownPendingApprovalIds.length ?? 0) > 0
     ) {
       await awaitAttachmentUploads(composerAttachmentsSnapshot.map((attachment) => attachment.id));
@@ -918,7 +927,7 @@ export function useComposerSend(input: ComposerSendInput) {
     // drafts leave them alone. After navigating away during an upload, the shown approvals
     // are another thread's, so this send leaves them alone too.
     const approvalsToDecline =
-      currentRouteThreadKeyRef.current === routeThreadKey
+      !queuesModelChange && currentRouteThreadKeyRef.current === routeThreadKey
         ? pendingApprovalsRef.current.filter((approval) =>
             sendCtx?.shownPendingApprovalIds.includes(approval.requestId),
           )

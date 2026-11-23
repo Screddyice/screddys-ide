@@ -1673,6 +1673,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         endpoint: "http://127.0.0.1:43123/mcp",
         authorizationHeader: "Bearer secret-codex-token",
         browserToolsAvailable: true,
+        computerUseCommand: "/Applications/CuaDriver.app/Contents/MacOS/cua-driver",
       });
       const requests: Array<unknown> = [];
       yield* makeCodexReplayHarness(
@@ -1699,6 +1700,10 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             mcp_optional_startup_grace_ms: 10_000,
             "features.concurrent_reasoning_summaries": true,
             "shell_environment_policy.set.T3CODE_THREAD_ID": `thread-${scenario}`,
+            "mcp_servers.screddy-computer-use": {
+              command: "/Applications/CuaDriver.app/Contents/MacOS/cua-driver",
+              args: ["mcp"],
+            },
             "mcp_servers.t3-code": {
               url: "http://127.0.0.1:43123/mcp",
               tool_timeout_sec: 3_900,

@@ -354,6 +354,7 @@ export function SplitThreadWorkspace({
       <div className="@container/split-workspace min-h-0 min-w-0 flex-1 overflow-auto">
         <div
           ref={layoutRef}
+          data-split-layout-active={paneCount > 1 || undefined}
           className={cn(
             "split-thread-layout relative grid h-full grid-cols-[minmax(0,1fr)]",
             gridClasses[paneCount],

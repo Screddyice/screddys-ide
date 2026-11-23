@@ -201,11 +201,21 @@ export function cursorRuntimeAgentPolicy(
 
 export function cursorMcpServers(
   session: McpProviderSession.McpProviderSessionConfig | undefined,
+  allowComputerUse = true,
 ): Record<string, McpServerConfig> | undefined {
   if (session === undefined) {
     return undefined;
   }
   return {
+    ...(session.computerUseCommand === undefined || !allowComputerUse
+      ? {}
+      : {
+          [McpProviderSession.COMPUTER_USE_MCP_SERVER_NAME]: {
+            type: "stdio" as const,
+            command: session.computerUseCommand,
+            args: [...McpProviderSession.COMPUTER_USE_MCP_ARGS],
+          },
+        }),
     "t3-code": {
       type: "http",
       url: session.endpoint,
@@ -302,7 +312,10 @@ export function makeCursorAgentOptions(input: {
   readonly platform: NodeJS.Platform;
 }): AgentOptions {
   const policy = cursorRuntimeAgentPolicy(input.runtimePolicy, input.platform);
-  const mcpServers = cursorMcpServers(input.mcpSession);
+  const mcpServers = cursorMcpServers(
+    input.mcpSession,
+    input.runtimePolicy.interactionMode !== "plan",
+  );
   return {
     model: cursorSdkModelSelection(input.modelSelection),
     name: `T3 Code ${input.threadId}`,
@@ -2397,7 +2410,10 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
               runtimePolicy: turnInput.runtimePolicy,
             });
             const mcpSession = yield* mcpSessions.read(turnInput.threadId);
-            const mcpServers = cursorMcpServers(mcpSession);
+            const mcpServers = cursorMcpServers(
+              mcpSession,
+              turnInput.runtimePolicy.interactionMode !== "plan",
+            );
             const hasDeviceTools =
               mcpServers !== undefined && mcpSession?.capabilities?.has("device") === true;
             const known = yield* Ref.get(told);

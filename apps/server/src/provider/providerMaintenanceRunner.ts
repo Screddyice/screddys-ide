@@ -69,6 +69,8 @@ export interface ProviderMaintenanceRunnerShape {
           readonly provider: ProviderDriverKind;
           readonly instanceId?: ProviderInstanceId | undefined;
           readonly targetVersion?: string | undefined;
+          /** Recheck background and session state immediately before changing the installation. */
+          readonly canRunAutomatically?: Effect.Effect<boolean>;
         },
   ) => Effect.Effect<ServerProviderUpdatedPayload, ServerProviderUpdateError>;
 }
@@ -390,6 +392,10 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
         ? defaultInstanceIdForDriver(provider)
         : (target.instanceId ?? defaultInstanceIdForDriver(provider));
     const targetVersion = typeof target === "string" ? undefined : target.targetVersion;
+    const automatic = typeof target === "string" ? undefined : target.canRunAutomatically;
+    if (automatic && !(yield* automatic)) {
+      return { providers: yield* providerRegistry.getProviders };
+    }
     const targetKey = `instance:${instanceId}`;
     const capabilities = yield* providerRegistry.getProviderMaintenanceCapabilitiesForInstance(
       instanceId,
@@ -531,8 +537,25 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
                   }),
                 );
               }
+              if (
+                automatic &&
+                (!candidateVersion ||
+                  !precheck.advisoryEnriched ||
+                  !precheck.verifiedProviders.some(
+                    (verified) =>
+                      verified.enabled &&
+                      verified.installed &&
+                      verified.versionAdvisory?.canUpdate === true &&
+                      verified.versionAdvisory.status === "behind_latest",
+                  ))
+              ) {
+                return { providers: yield* setUpdateState(null) };
+              }
             }
 
+            if (automatic && !(yield* automatic)) {
+              return { providers: yield* setUpdateState(null) };
+            }
             yield* setRunningMessage(`Running ${describeCommand(command)}`);
             const result = yield* runMaintenanceCommand(command, setRunningMessage);
             const finishedAt = yield* nowIso;

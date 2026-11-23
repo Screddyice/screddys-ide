@@ -1,5 +1,6 @@
 import {
   type ChatAttachment,
+  type ModelSelection,
   CommandId,
   type OrchestrationV2Command,
   OrchestrationV2ProviderCapabilities,
@@ -10,6 +11,7 @@ import {
   ProviderInstanceId,
   ThreadId,
 } from "@t3tools/contracts";
+import { modelTargetChanged } from "@t3tools/shared/model";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -93,7 +95,16 @@ export function resolveMessageDispatchIntent(
   projection: OrchestrationV2ThreadProjection,
   requestedMode: MessageDispatchMode,
   deliveryIntent?: "auto" | "steer" | "restart",
+  modelSelection?: ModelSelection,
 ): MessageDispatchMode {
+  // A handoff needs the source turn's finished context. Steering a follow-up
+  // with a new model would instead ask the current provider to restart its turn.
+  if (
+    (deliveryIntent === "auto" || deliveryIntent === "steer") &&
+    modelTargetChanged(projection.runs.findLast(isActiveRun)?.modelSelection, modelSelection)
+  ) {
+    return { type: "queue_after_active" };
+  }
   const mode = resolveDeliveryIntent(projection, requestedMode, deliveryIntent);
   if (mode.type !== "steer_active") return mode;
   // Compaction and sign-out cannot accept steers; queue follow-ups.
