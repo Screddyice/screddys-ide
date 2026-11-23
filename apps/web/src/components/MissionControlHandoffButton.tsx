@@ -41,6 +41,7 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
+import grokBotLogo from "./mcp/logos/grokbot.png";
 import { startFanoutThread } from "./chat/chatViewSend";
 import { Button } from "./ui/button";
 import {
@@ -458,10 +459,10 @@ export function MissionControlHandoffButton({
     }
   };
 
-  const logo = handoff?.kind === "grok" ? "grok" : (coding?.entry.driverKind ?? ideAgent);
+  const logo = coding?.entry.driverKind ?? ideAgent;
   const agentLabel =
     handoff?.kind === "grok"
-      ? "Go to Grok"
+      ? "Go to Grok Bot"
       : (coding?.entry.displayName ?? (ideAgent && agentNames[ideAgent]));
   const modelLabel =
     handoff?.kind === "grok"
@@ -470,7 +471,7 @@ export function MissionControlHandoffButton({
         (checkingModel ? "Checking model…" : (coding?.modelLabel ?? "Model unavailable"));
   const actionName =
     handoff?.kind === "grok"
-      ? "Go to Grok"
+      ? "Go to Grok Bot"
       : agentLabel
         ? "Start with " + agentLabel
         : handoff
@@ -496,6 +497,8 @@ export function MissionControlHandoffButton({
       >
         {!handoff || starting ? (
           <LoaderCircleIcon className="motion-safe:animate-spin" aria-hidden />
+        ) : handoff.kind === "grok" ? (
+          <img src={grokBotLogo} alt="" className="size-5 shrink-0 rounded-md" />
         ) : logo ? (
           <ProviderInstanceIcon
             driverKind={ProviderDriverKind.make(logo)}
