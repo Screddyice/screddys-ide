@@ -58,6 +58,25 @@ it("saves an existing thread's model pick and keeps the picker usable in a narro
   });
   await expect.element(page.getByText("Answer 0 for thread-model-pick.")).toBeVisible();
 
+  const followUp = "What should I do next based on this?";
+  const ghost = page.getByText(/What should I do next based on this\?\s*⇥ Tab/);
+  const editorLocator = page.getByTestId("composer-editor");
+  await vi.waitFor(() =>
+    expect(editorLocator.element().closest("[data-chat-composer-body]")?.textContent).toContain(
+      followUp,
+    ),
+  );
+  await expect.element(ghost).toBeVisible();
+  await editorLocator.click();
+  const beforeTab = dispatchedCommands().length;
+  await userEvent.keyboard("{Tab}");
+  await expect.element(editorLocator).toHaveTextContent(followUp);
+  expect(dispatchedCommands()).toHaveLength(beforeTab);
+  await editorLocator.fill("");
+  await expect.element(ghost).toBeVisible();
+  await userEvent.keyboard("{Escape}");
+  await expect.element(ghost).not.toBeInTheDocument();
+
   await page.getByRole("button", { name: "GPT-5.4", exact: true }).click();
   await page.getByRole("option", { name: /GPT-5\.5/ }).click();
   await vi.waitFor(() =>
