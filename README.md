@@ -73,6 +73,10 @@ The endpoint is relative to the machine running the IDE environment. Setup is op
 
 Use **Split workspace** in a thread header to add a side-by-side pane. Each pane can show another existing thread. A diff opened from a split pane appears as a sheet on the right.
 
+## Thread status in the sidebar
+
+A thread that is setting up or working shows a spinning ring in the sidebar. Threads waiting on you or on another thread keep their own icons.
+
 ## Upstream T3 Code documentation
 
 T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).

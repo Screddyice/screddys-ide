@@ -3,6 +3,8 @@ import {
   DEFAULT_CLIENT_SETTINGS,
   EnvironmentId,
   ProjectId,
+  ProviderInstanceId,
+  RunId,
   ThreadId,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
@@ -121,6 +123,72 @@ function threadShell(projectId: ProjectId, index: number): EnvironmentThreadShel
     title: `Thread ${index}`,
   });
 }
+
+it.each([false, true])(
+  "shows the working indicator only during active work (folders=%s)",
+  async (folders) => {
+    const settings = getClientSettings();
+    using _restoreSettings = { [Symbol.dispose]: () => __setClientSettingsForTests(settings) };
+    __setClientSettingsForTests({
+      ...DEFAULT_CLIENT_SETTINGS,
+      boringSidebarEnabled: folders,
+      sidebarWorkingShelfEnabled: false,
+    });
+    const activeProject = project("active");
+    const runtime = {
+      status: "running" as const,
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      providerName: "Codex",
+      activeRunId: RunId.make("active-run"),
+      lastError: null,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const running = { ...threadShell(activeProject.id, 0), runtime };
+    const preparing = {
+      ...threadShell(activeProject.id, 1),
+      runtime: { ...runtime, status: "preparing" as const },
+    };
+    const approval = {
+      ...threadShell(activeProject.id, 2),
+      runtime,
+      hasPendingApprovals: true,
+    };
+    const waiting = {
+      ...threadShell(activeProject.id, 3),
+      runtime,
+      blockedOnThreadWait: true,
+    };
+    const routeThreadRef = { environmentId: activeProject.environmentId, threadId: running.id };
+    vi.mocked(useProjects).mockReturnValue([activeProject]);
+    vi.mocked(useQuietThreadShells).mockReturnValue([running, preparing, approval, waiting]);
+    vi.mocked(useThreadRouteTarget).mockReturnValue({ kind: "server", threadRef: routeThreadRef });
+    const sidebar = () => (
+      <SidebarProvider>
+        <Sidebar routeReveal={{ observedKey: null, pendingKey: null }} />
+      </SidebarProvider>
+    );
+    await using screen = await render(sidebar());
+    const working = screen.getByRole("button", { name: /^Thread 0, Working/ });
+    await expect.element(working).toBeInTheDocument();
+    const indicator = (row: typeof working) => row.element().querySelector("[data-thread-working]");
+    expect(indicator(working)).not.toBeNull();
+    expect(indicator(screen.getByRole("button", { name: /^Thread 1, Setting up/ }))).not.toBeNull();
+    expect(indicator(screen.getByRole("button", { name: /^Thread 2, Approval/ }))).toBeNull();
+    expect(indicator(screen.getByRole("button", { name: /^Thread 3, Waiting/ }))).toBeNull();
+
+    const completed = {
+      ...running,
+      runtime: { ...runtime, status: "completed" as const, activeRunId: null },
+    };
+    vi.mocked(useQuietThreadShells).mockReturnValue([completed, preparing, approval, waiting]);
+    await screen.rerender(sidebar());
+    const finished = screen.getByRole("button", { name: /^Thread 0(?:,|$)/ });
+    await expect
+      .element(finished)
+      .not.toHaveAttribute("aria-label", expect.stringContaining("Working"));
+    expect(indicator(finished)).toBeNull();
+  },
+);
 
 describe("sidebar render isolation", () => {
   // regression: #33100 Cmd+J re-rendered every sidebar row, which took hundreds of ms with many threads
