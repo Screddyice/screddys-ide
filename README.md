@@ -16,7 +16,7 @@ The optional `.env` step includes the upstream public T3 Connect configuration. 
 
 ## Build a preview from main
 
-Run **Package Screddy for Apple Silicon** on the `main` branch in GitHub Actions with a version such as `0.1.37-preview.1`. It runs the Mission Control regression tests and attaches the DMG, ZIP, and SHA-256 checksums to the private workflow run. Preview builds do not carry an automatic update feed. Developer ID signing, notarization, and release publication require a separate distribution setup.
+Run **Package Screddy for Apple Silicon** on the `main` branch in GitHub Actions with a version such as `0.1.37-preview.20261122.1`. It runs the Mission Control regression tests and attaches the DMG, ZIP, and SHA-256 checksums to the private workflow run. Preview builds do not carry an automatic update feed. Developer ID signing, notarization, and release publication require a separate distribution setup.
 
 This repository imports the Screddy source snapshot based on `bb564f6e` and retains the upstream MIT license. The original T3 Code workflows are available under `.github/upstream-workflows` for reference.
 

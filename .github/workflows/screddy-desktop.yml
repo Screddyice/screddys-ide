@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Preview version, such as 0.1.37-preview.1
+        description: Preview version, such as 0.1.37-preview.20261122.1
         required: true
-        default: 0.1.37-preview.1
+        default: 0.1.37-preview.20261122.1
         type: string
 
 permissions:
@@ -37,7 +37,7 @@ jobs:
       - name: Validate build inputs
         shell: bash
         run: |
-          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]]
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]{8}\.[0-9]+$ ]]
           test "$(uname -m)" = arm64
           test "$(node -p 'process.version')" = "v$(node -p 'require("./package.json").engines.node')"
           rustup target add aarch64-apple-darwin
@@ -67,6 +67,10 @@ jobs:
           zip="Screddy-$RELEASE_VERSION-arm64.zip"
           hdiutil verify "$dmg"
           unzip -tq "$zip"
+          if unzip -Z1 "$zip" | grep '/Contents/Resources/app-update\.yml$' >/dev/null; then
+            echo "Preview package unexpectedly contains an updater feed" >&2
+            exit 1
+          fi
           shasum -a 256 "$dmg" "$zip" > SHA256SUMS
           shasum -a 256 -c SHA256SUMS
 
