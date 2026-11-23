@@ -425,10 +425,11 @@ export interface ThreadManagementServiceShape {
   readonly listAppOwnedChildThreadIds: Orchestrator.OrchestratorV2["Service"]["listAppOwnedChildThreadIds"];
   readonly getThreadLinkMetadata: Orchestrator.OrchestratorV2["Service"]["getThreadLinkMetadata"];
   readonly getThreadTitles: Orchestrator.OrchestratorV2["Service"]["getThreadTitles"];
-  /** Omit `projectId` to list every project's threads. Side chats are never listed. */
+  /** Omit `projectId` to list every project's threads. Side chats are excluded by default. */
   readonly listProjectThreads: (input: {
     readonly projectId?: ProjectId | undefined;
     readonly includeSubagents: boolean;
+    readonly includeSideChats?: boolean;
   }) => Effect.Effect<ReadonlyArray<OrchestrationV2ThreadShell>, ThreadManagementError>;
   readonly sendToThread: (
     input: ThreadManagementSendInput,
@@ -804,7 +805,7 @@ const make = Effect.gen(function* () {
           snapshot.threads
             .filter((thread) =>
               input.includeSubagents
-                ? thread.lineage.sideChat !== true
+                ? input.includeSideChats === true || thread.lineage.sideChat !== true
                 : isListedThreadLineage(thread.lineage),
             )
             .toSorted(

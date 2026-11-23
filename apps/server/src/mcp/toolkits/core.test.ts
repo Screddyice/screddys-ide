@@ -10,6 +10,7 @@ import {
   EnvironmentId,
   NodeId,
   OrchestratorMcpThreadReadResult,
+  ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
   RunId,
@@ -136,6 +137,92 @@ it.effect("checks capability through the production registration", () =>
       ),
     ),
   ),
+);
+
+it.effect(
+  "coordinates project peers across providers and atomically claims overlapping paths",
+  () => {
+    const claudeId = ThreadId.make("mcp-claude-peer");
+    const otherId = ThreadId.make("mcp-other-project");
+    const linkedId = ThreadId.make("mcp-linked-peer");
+    const claude = ProviderInstanceId.make("claudeAgent");
+    const shells = new Map([
+      [threadId, McpToolAccessTestkit.liveThreadShell(threadId)],
+      [
+        claudeId,
+        {
+          ...McpToolAccessTestkit.liveThreadShell(claudeId),
+          providerInstanceId: claude,
+          modelSelection: { instanceId: claude, model: "claude-sonnet" },
+        },
+      ],
+      [
+        otherId,
+        { ...McpToolAccessTestkit.liveThreadShell(otherId), projectId: ProjectId.make("other") },
+      ],
+      [
+        linkedId,
+        {
+          ...McpToolAccessTestkit.liveThreadShell(linkedId),
+          linkOrigin: { sessionId: "peer", label: "Other environment" },
+        },
+      ],
+    ]);
+    const management = Layer.mock(ThreadManagement.ThreadManagementService)({
+      getThreadShell: (id) => Effect.succeed(shells.get(id) ?? null),
+      listProjectThreads: () => Effect.succeed([...shells.values()]),
+    });
+    return Effect.gen(function* () {
+      const server = yield* McpServer.McpServer;
+      const call = (id: ThreadId, name: string, args: Record<string, unknown>) =>
+        server.callTool({ name, arguments: args }).pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, {
+            ...scope,
+            thread: {
+              ...scope.thread!,
+              threadId: id,
+              providerInstanceId: shells.get(id)!.providerInstanceId,
+            },
+          }),
+          Effect.provideService(McpSchema.McpServerClient, client),
+        );
+      const list = yield* call(threadId, "t3_project_work", {});
+      expect(list.structuredContent).toMatchObject({
+        threads: [{ threadId: claudeId, model: "claude-sonnet", paths: [] }],
+      });
+      const claim = (id: ThreadId, path: string) =>
+        call(id, "t3_project_claim", { action: "claim", paths: [path] });
+      const [first, second] = yield* Effect.all(
+        [claim(threadId, "./src/"), claim(claudeId, "src/view.ts")],
+        { concurrency: "unbounded" },
+      );
+      const claimStatus = (result: McpSchema.CallToolResult) =>
+        (result.structuredContent as { status?: string } | undefined)?.status;
+      expect([claimStatus(first), claimStatus(second)].sort()).toEqual(["claimed", "conflict"]);
+      const owner = claimStatus(first) === "claimed" ? threadId : claudeId;
+      const peer = owner === threadId ? claudeId : threadId;
+      const visible = yield* call(peer, "t3_project_work", {});
+      expect(visible.structuredContent).toMatchObject({
+        threads: [{ threadId: owner, paths: [owner === threadId ? "src" : "src/view.ts"] }],
+      });
+      expect(declaredFailure(yield* claim(peer, "../other"))).toMatchObject({
+        code: "invalid_request",
+      });
+      shells.set(owner, { ...shells.get(owner)!, activeRunId: null, status: "completed" });
+      expect((yield* claim(peer, "src")).structuredContent).toEqual({
+        status: "claimed",
+        paths: ["src"],
+      });
+    }).pipe(
+      Effect.provide(
+        layerThreadToolkit.pipe(
+          Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
+          Layer.provide(NodeCrypto.layer),
+          Layer.provide(management),
+        ),
+      ),
+    );
+  },
 );
 
 it.effect("an answered question reports already answered instead of not found", () => {
