@@ -2039,7 +2039,7 @@ export function claudeMcpQueryOverrides(input: {
             [McpProviderSession.COMPUTER_USE_MCP_SERVER_NAME]: {
               type: "stdio",
               command: session.computerUseCommand,
-              args: [...McpProviderSession.COMPUTER_USE_MCP_ARGS],
+              args: [...(session.computerUseArgs ?? McpProviderSession.COMPUTER_USE_MCP_ARGS)],
             },
           }),
       "t3-code": {

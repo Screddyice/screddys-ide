@@ -1,6 +1,7 @@
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
+import { resolveSelfInvocation, selfInvocationArgs } from "@t3tools/shared/nodeRuntime";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
   isOrchestrationV2WorkActive,
@@ -27,6 +28,7 @@ import * as FiberSet from "effect/FiberSet";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
@@ -36,6 +38,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
+import { ServerConfig } from "../config.ts";
 import { normalizeModelMetricLabel } from "../observability/Attributes.ts";
 import {
   providerSessionsTotal,
@@ -57,6 +60,7 @@ import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 
+const CUA_DRIVER = "/Applications/CuaDriver.app/Contents/MacOS/cua-driver";
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_MAX_IDLE_PIN_MS = 4 * 60 * 60 * 1000;
 const RELEASE_SCOPE_CLOSE_TIMEOUT_MS = 30 * 1000;
@@ -344,6 +348,7 @@ export const layerWithOptions = (
   | IdAllocator.IdAllocatorV2
   | McpProviderSessions.McpProviderSessions
   | McpSessionRegistry.McpSessionRegistry
+  | Path.Path
   | ProjectionStore.ProjectionStoreV2
   | ProviderEventIngestor.ProviderEventIngestorV2
   | ProviderAdapterRegistry.ProviderAdapterRegistryV2
@@ -354,6 +359,19 @@ export const layerWithOptions = (
       const registry = yield* ProviderAdapterRegistry.ProviderAdapterRegistryV2;
       const fileSystem = yield* FileSystem.FileSystem;
       const platform = yield* HostProcess.Platform;
+      const serverConfig = yield* Effect.serviceOption(ServerConfig);
+      const computerUseBridgeArgs =
+        platform === "darwin" && Option.isSome(serverConfig)
+          ? yield* Effect.map(resolveSelfInvocation(), (self) => [
+              "ELECTRON_RUN_AS_NODE=1",
+              self.command,
+              ...selfInvocationArgs(self, [
+                "__computer-use-mcp",
+                CUA_DRIVER,
+                serverConfig.value.stateDir,
+              ]),
+            ])
+          : undefined;
       const mcpSessionRegistry = yield* McpSessionRegistry.McpSessionRegistry;
       const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
       /** Unreadable settings must preserve explicit browser-access opt-outs. */
@@ -508,7 +526,6 @@ export const layerWithOptions = (
                   thread,
                   (value) => value.lineage.relationshipToParent === "subagent",
                 );
-                const driver = "/Applications/CuaDriver.app/Contents/MacOS/cua-driver";
                 // The signed driver runs on this provider's Mac, with its own OS
                 // permissions. A paired client never receives a desktop-control endpoint.
                 const computerUseCommand =
@@ -521,8 +538,10 @@ export const layerWithOptions = (
                       value.lineage.relationshipToParent !== "subagent" &&
                       value.interactionMode !== "plan",
                   ) &&
-                  (yield* fileSystem.exists(driver).pipe(Effect.orElseSucceed(() => false)))
-                    ? driver
+                  (yield* fileSystem.exists(CUA_DRIVER).pipe(Effect.orElseSucceed(() => false)))
+                    ? computerUseBridgeArgs === undefined
+                      ? CUA_DRIVER
+                      : "/usr/bin/env"
                     : undefined;
                 const existing = yield* mcpSessions.read(threadId);
                 if (existing !== undefined) {
@@ -563,7 +582,14 @@ export const layerWithOptions = (
                 });
                 yield* mcpSessions.set({
                   ...credential.config,
-                  ...(computerUseCommand === undefined ? {} : { computerUseCommand }),
+                  ...(computerUseCommand === undefined
+                    ? {}
+                    : {
+                        computerUseCommand,
+                        ...(computerUseBridgeArgs === undefined
+                          ? {}
+                          : { computerUseArgs: computerUseBridgeArgs }),
+                      }),
                 });
                 reserveMcpCredential(threadId, credential.config.providerSessionId);
                 return { mcpCredentialId: credential.config.providerSessionId, issued: true };

@@ -27,6 +27,7 @@ vi.mock("./DesktopStartupRecovery.ts", () => ({ listen: Effect.void }));
 import * as DesktopApp from "./DesktopApp.ts";
 import * as DesktopAppActivation from "./DesktopAppActivation.ts";
 import * as DesktopAppIdentity from "./DesktopAppIdentity.ts";
+import * as DesktopAssets from "./DesktopAssets.ts";
 import * as DesktopClerk from "./DesktopClerk.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopLegacyLocalStorage from "./DesktopLegacyLocalStorage.ts";
@@ -111,6 +112,14 @@ it.effect.each([false, true])(
             configuredBackendPort: Option.some(3773),
             defaultDesktopSettings: { serverExposureMode: "local-only" },
           } as unknown as DesktopEnvironment.DesktopEnvironment["Service"]),
+          Effect.provideService(DesktopAssets.DesktopAssets, {
+            iconPaths: Effect.succeed({
+              png: Option.none(),
+              ico: Option.none(),
+              icns: Option.none(),
+            }),
+            resolveResourcePath: () => Effect.succeedNone,
+          }),
           Effect.provideService(DesktopPreReadyPlatform.DesktopPreReadyElectronOptions, {
             linux: null,
             linuxPasswordStoreCommandLine: "basic",

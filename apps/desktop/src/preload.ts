@@ -6,6 +6,8 @@ import type {
   DesktopPreviewRecordingInputEvent,
   DesktopPreviewTabState,
   DesktopSnapShotEvent,
+  DesktopTokenUsageMenuAction,
+  DesktopTokenUsageMenuState,
 } from "@t3tools/contracts";
 import { exposeClerkBridge } from "@clerk/electron/preload";
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
@@ -45,7 +47,18 @@ try {
 // oxlint-disable-next-line t3code/no-global-process-runtime -- Electron exposes the client platform in its sandboxed preload process.
 const clientPlatform = process.platform;
 
+let tokenUsageMenuListener: ((action: DesktopTokenUsageMenuAction) => void) | undefined;
+let pendingTokenUsageOpen = false;
 if (clientPlatform === "darwin") {
+  ipcRenderer.on(IpcChannels.MENU_ACTION_CHANNEL, (_event, action: unknown) => {
+    if (action === IpcChannels.TOKEN_USAGE_MENU_OPEN_ACTION) {
+      if (tokenUsageMenuListener === undefined) pendingTokenUsageOpen = true;
+      else tokenUsageMenuListener("open");
+    } else if (action === IpcChannels.TOKEN_USAGE_MENU_REFRESH_ACTION) {
+      tokenUsageMenuListener?.("refresh");
+    }
+  });
+
   // Native buttons ignore Chromium zoom; reserve native points even after reload.
   const syncWindowControlInset = () => {
     document.documentElement.style.setProperty(
@@ -97,6 +110,26 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.sendSync(IpcChannels.GET_RELAY_TELEMETRY_ENABLED_CHANNEL) === true,
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   getClientPlatform: () => clientPlatform,
+  ...(clientPlatform === "darwin"
+    ? {
+        setTokenUsageMenu: (state: DesktopTokenUsageMenuState) =>
+          ipcRenderer.invoke(IpcChannels.SET_TOKEN_USAGE_MENU_CHANNEL, state),
+        onTokenUsageMenuAction: (listener: (action: DesktopTokenUsageMenuAction) => void) => {
+          tokenUsageMenuListener = listener;
+          // The tray can recreate a closed window before its React router subscribes.
+          if (pendingTokenUsageOpen) {
+            queueMicrotask(() => {
+              if (tokenUsageMenuListener !== listener || !pendingTokenUsageOpen) return;
+              pendingTokenUsageOpen = false;
+              listener("open");
+            });
+          }
+          return () => {
+            if (tokenUsageMenuListener === listener) tokenUsageMenuListener = undefined;
+          };
+        },
+      }
+    : {}),
   setNotificationBadge: (badge) =>
     ipcRenderer.invoke(IpcChannels.SET_NOTIFICATION_BADGE_CHANNEL, badge),
   onNotificationBadgeClear: (listener) => {

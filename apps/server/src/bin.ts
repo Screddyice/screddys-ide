@@ -42,6 +42,13 @@ if (
   if (process.argv[2] === "__service-launcher" && process.argv.length === 3) {
     const { runServiceLauncherCli } = await import("./cli/serviceLauncher.ts");
     await runServiceLauncherCli();
+  } else if (
+    process.argv[2] === "__computer-use-mcp" &&
+    process.argv[3] !== undefined &&
+    process.argv[4] !== undefined
+  ) {
+    const { runComputerUseMcpBridge } = await import("./computerUse/McpBridge.ts");
+    process.exitCode = await runComputerUseMcpBridge(process.argv[3], process.argv[4]);
   } else {
     const { runCliCommand } = await loadCliMain();
     await runCliCommand();

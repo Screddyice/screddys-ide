@@ -849,7 +849,7 @@ function acpMcpContext(
           {
             name: McpProviderSession.COMPUTER_USE_MCP_SERVER_NAME,
             command: session.computerUseCommand,
-            args: McpProviderSession.COMPUTER_USE_MCP_ARGS,
+            args: session.computerUseArgs ?? McpProviderSession.COMPUTER_USE_MCP_ARGS,
             env: [],
           },
         ];
