@@ -525,6 +525,7 @@ export const layerWithOptions = (
                   (yield* fileSystem.exists(driver).pipe(Effect.orElseSucceed(() => false)))
                     ? driver
                     : undefined;
+                if (computerUseCommand !== undefined) capabilities.add("computer-use");
                 const existing = yield* mcpSessions.read(threadId);
                 if (existing !== undefined) {
                   // Reserve before async validation so release cannot revoke between validation and reservation.
@@ -546,6 +547,8 @@ export const layerWithOptions = (
                     resolved.thread.providerInstanceId === providerInstanceId &&
                     resolved.capabilities.has("preview") === browserToolsAvailable &&
                     resolved.capabilities.has("device") === deviceToolsAvailable &&
+                    resolved.capabilities.has("computer-use") ===
+                      (computerUseCommand !== undefined) &&
                     existing.computerUseCommand === computerUseCommand &&
                     // A credential issued while the lineage read failed is replaced once it works.
                     (resolved.thread.subagent === true) === subagent

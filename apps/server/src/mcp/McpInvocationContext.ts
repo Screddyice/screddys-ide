@@ -16,6 +16,7 @@ import { formatThreadLink, hostedThreadLink } from "@t3tools/shared/threadLinks"
 
 const ALL_MCP_CAPABILITIES = [
   "preview",
+  "computer-use",
   "orchestration",
   "worktree",
   "device",
@@ -165,6 +166,16 @@ export const hiddenFromSubagents = (): boolean => {
   return scope?.thread?.subagent !== true;
 };
 
+export const hasComputerUseThread = (): boolean => {
+  const fiber = Fiber.getCurrent();
+  const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
+  return (
+    scope?.thread !== undefined &&
+    scope.thread.subagent !== true &&
+    scope.capabilities.has("computer-use")
+  );
+};
+
 /** `McpSchema.EnabledWhen` for tools that only serve links, hidden while the beta is off. */
 export const hiddenWhileLinksOff = (): boolean => {
   const fiber = Fiber.getCurrent();
@@ -206,7 +217,7 @@ export const requireMcpCapability = <const C extends McpCapability>(
     Effect.withSpan("mcp.requireCapability"),
   );
 
-export const requireThreadMcpCapability = <const C extends "preview" | "device">(
+export const requireThreadMcpCapability = <const C extends "preview" | "device" | "computer-use">(
   capability: C,
 ): Effect.Effect<McpThreadInvocationScope, McpCapabilityError<C>, McpInvocationContext> =>
   McpInvocationContext.pipe(
