@@ -73,6 +73,8 @@ The endpoint is relative to the machine running the IDE environment. Setup is op
 
 Use **Split workspace** in a thread header to add a side-by-side pane. Each pane can show another existing thread. A diff opened from a split pane appears as a sheet on the right.
 
+For contributors: the chooser button is `SplitPaneThreadSelector` and the searchable thread list is `SplitThreadPicker`, so every pane shares one implementation.
+
 ## Thread status in the sidebar
 
 A thread that is setting up or working shows a spinning blue ring in the sidebar, in the same blue the working icon used before. Threads waiting on you or on another thread keep their own icons.

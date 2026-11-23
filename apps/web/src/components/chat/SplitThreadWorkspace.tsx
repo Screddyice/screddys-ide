@@ -14,13 +14,7 @@ import { sortThreads } from "@t3tools/client-runtime/state/thread-sort";
 import { threadKey } from "@t3tools/client-runtime/state/entities";
 import { AuthOrchestrationOperateScope, type ScopedThreadRef } from "@t3tools/contracts";
 import * as Option from "effect/Option";
-import {
-  ArrowUpRightIcon,
-  ChevronDownIcon,
-  MessageSquareIcon,
-  PlusIcon,
-  XIcon,
-} from "lucide-react";
+import { ArrowUpRightIcon, MessageSquareIcon, PlusIcon, XIcon } from "lucide-react";
 import {
   useEffect,
   useId,
@@ -60,13 +54,14 @@ import ChatView from "../ChatView";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { AppearanceToggleButton } from "./AppearanceToggleButton";
 import {
   PrimarySplitPaneMoveContext,
   SplitPaneMoveHandle,
   type SplitPaneMove,
 } from "./SplitPaneMoveHandle";
 import { SplitPaneResizeHandle } from "./SplitPaneResizeHandle";
-import { AppearanceToggleButton } from "./AppearanceToggleButton";
+import { SplitPaneThreadSelector, splitPaneHeaderClass } from "./SplitPaneThreadSelector";
 import { SplitContext, SplitThreadButton, type SplitPaneCount } from "./SplitThreadButton";
 import {
   threadContextDropTargetProps,
@@ -557,6 +552,7 @@ function SplitPane({
 }) {
   const paneNumber = index + 1;
   const pickerId = useId();
+  const selectorRef = useRef<HTMLButtonElement>(null);
   const dropTarget = useRef<HTMLElement>(null);
   const promoted = useComposerDraftStore((store) =>
     draftId ? store.getPromotedDraftRedirect(draftId) : null,
@@ -597,18 +593,6 @@ function SplitPane({
         unlistedThread.lineage.sideChat ||
         hidingAnywhere)) ||
     (environmentsReady && selectedRef !== null && !presentationById.has(selectedRef.environmentId));
-  const [query, setQuery] = useState("");
-  const [choosingProject, setChoosingProject] = useState(false);
-  const search = query.trim().toLocaleLowerCase();
-  const matchingThreads = threads.filter(
-    (item) =>
-      !otherSelections.includes(splitThreadKey(item)) &&
-      item.title.toLocaleLowerCase().includes(search),
-  );
-  function choose(value: string) {
-    setSelection(value);
-    onPickerOpenChange(false);
-  }
   const openThreadRef = unavailable
     ? null
     : thread
@@ -616,10 +600,6 @@ function SplitPane({
       : unlistedThread
         ? unlistedRef
         : promoted;
-  const closePicker = () => {
-    setChoosingProject(false);
-    onPickerOpenChange(false);
-  };
   const blank = selection === "" && !draftId;
   const paneTitle =
     thread?.title ??
@@ -636,7 +616,7 @@ function SplitPane({
       );
     if (!key) return;
     setSelection(key, true);
-    closePicker();
+    onPickerOpenChange(false);
   });
 
   return (
@@ -653,28 +633,16 @@ function SplitPane({
         fillsRow && "@min-[36rem]/split-workspace:col-span-2",
       )}
     >
-      <div className="flex shrink-0 items-center gap-2 border-b border-border p-2">
+      <div data-split-pane-header className={splitPaneHeaderClass}>
         {move && !blank && <SplitPaneMoveHandle move={move} title={paneTitle ?? "Thread"} />}
-        <Button
-          aria-label={`Choose a thread for pane ${paneNumber}`}
-          aria-expanded={pickerOpen}
-          aria-controls={pickerOpen ? pickerId : undefined}
-          variant="outline"
-          size="sm"
-          className="min-w-0 flex-1 justify-between"
-          onClick={() => {
-            if (pickerOpen) {
-              closePicker();
-            } else {
-              setQuery("");
-              setChoosingProject(false);
-              onPickerOpenChange(true);
-            }
-          }}
-        >
-          <span className="min-w-0 truncate">{paneTitle ?? "Choose a thread"}</span>
-          <ChevronDownIcon aria-hidden="true" className="size-3.5" />
-        </Button>
+        <SplitPaneThreadSelector
+          ref={selectorRef}
+          paneNumber={paneNumber}
+          title={paneTitle}
+          pickerId={pickerId}
+          open={pickerOpen}
+          onToggle={() => onPickerOpenChange(!pickerOpen)}
+        />
         {(standalone && openThreadRef) || (draftId && draft) ? (
           <Button
             size="icon-sm"
@@ -753,72 +721,116 @@ function SplitPane({
           )}
         </div>
         {pickerOpen ? (
-          <div
+          <SplitThreadPicker
             id={pickerId}
-            role="group"
-            aria-label={`Threads for pane ${paneNumber}`}
-            className="split-thread-picker absolute inset-0 z-10 flex flex-col bg-background px-2 pb-2"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.stopPropagation();
-                closePicker();
-              }
+            paneNumber={paneNumber}
+            threads={threads}
+            otherSelections={otherSelections}
+            canClear={!blank}
+            onDismiss={() => {
+              onPickerOpenChange(false);
+              selectorRef.current?.focus();
             }}
-          >
-            {choosingProject ? (
-              <SplitDraftProjectPicker
-                onBack={() => setChoosingProject(false)}
-                onOpenDraft={(id) => {
-                  setDraft(id);
-                  closePicker();
-                }}
-              />
-            ) : (
-              <>
-                <div className="shrink-0 pt-2">
-                  <Input
-                    nativeInput
-                    autoFocus
-                    aria-label="Search threads"
-                    placeholder="Search threads…"
-                    value={query}
-                    onChange={(event) => setQuery(event.currentTarget.value)}
-                  />
-                </div>
-                <div className="shrink-0 py-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full justify-start"
-                    onClick={() => setChoosingProject(true)}
-                  >
-                    <PlusIcon aria-hidden="true" />
-                    New thread
-                  </Button>
-                </div>
-                <div className="min-h-0 overflow-y-auto">
-                  {!blank && !search ? (
-                    <ThreadOption onClick={() => choose("")}>Clear pane</ThreadOption>
-                  ) : null}
-                  {matchingThreads.map((item) => {
-                    const key = splitThreadKey(item);
-                    return (
-                      <ThreadOption key={key} onClick={() => choose(key)}>
-                        {item.title}
-                      </ThreadOption>
-                    );
-                  })}
-                  {matchingThreads.length === 0 ? (
-                    <p className="px-2 py-2 text-sm text-muted-foreground">No matching threads</p>
-                  ) : null}
-                </div>
-              </>
-            )}
-          </div>
+            onChoose={(key) => {
+              setSelection(key);
+              onPickerOpenChange(false);
+            }}
+            onDraft={(id) => {
+              setDraft(id);
+              onPickerOpenChange(false);
+            }}
+          />
         ) : null}
       </div>
       {move && <SplitMovePreview blank={blank} />}
     </section>
+  );
+}
+
+function SplitThreadPicker({
+  id,
+  paneNumber,
+  threads,
+  otherSelections,
+  canClear = false,
+  onDismiss,
+  onChoose,
+  onDraft,
+}: {
+  readonly id: string;
+  readonly paneNumber: number;
+  readonly threads: readonly EnvironmentThreadShell[];
+  readonly otherSelections: readonly string[];
+  readonly canClear?: boolean;
+  readonly onDismiss: () => void;
+  readonly onChoose: (key: string) => void;
+  readonly onDraft: (id: DraftId) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [choosingProject, setChoosingProject] = useState(false);
+  const search = query.trim().toLocaleLowerCase();
+  const matchingThreads = threads.filter(
+    (item) =>
+      !otherSelections.includes(splitThreadKey(item)) &&
+      item.title.toLocaleLowerCase().includes(search),
+  );
+  return (
+    <div
+      id={id}
+      role="group"
+      aria-label={`Threads for pane ${paneNumber}`}
+      className="split-thread-picker absolute inset-0 z-10 flex flex-col bg-background px-2 pb-2"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onDismiss();
+        }
+      }}
+    >
+      {choosingProject ? (
+        <SplitDraftProjectPicker onBack={() => setChoosingProject(false)} onOpenDraft={onDraft} />
+      ) : (
+        <>
+          <div className="shrink-0 pt-2">
+            <Input
+              nativeInput
+              autoFocus
+              aria-label="Search threads"
+              placeholder="Search threads…"
+              value={query}
+              onChange={(event) => setQuery(event.currentTarget.value)}
+            />
+          </div>
+          <div className="shrink-0 py-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-start"
+              onClick={() => setChoosingProject(true)}
+            >
+              <PlusIcon aria-hidden="true" />
+              New thread
+            </Button>
+          </div>
+          <div className="min-h-0 overflow-y-auto">
+            {canClear && !search ? (
+              <ThreadOption onClick={() => onChoose("")}>Clear pane</ThreadOption>
+            ) : null}
+            {matchingThreads.map((item) => {
+              const key = splitThreadKey(item);
+              return (
+                <ThreadOption key={key} onClick={() => onChoose(key)}>
+                  {item.title}
+                </ThreadOption>
+              );
+            })}
+            {matchingThreads.length === 0 ? (
+              <p className="px-2 py-2 text-sm text-muted-foreground">No matching threads</p>
+            ) : null}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
