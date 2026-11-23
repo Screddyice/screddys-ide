@@ -95,6 +95,7 @@ import {
 import { terminalEnvironment } from "../../state/terminal";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { getProviderSummary } from "../settings/providerStatus";
+import { JevSetupDialog } from "../settings/JevSetupDialog";
 import { AddProviderInstanceDialog } from "../settings/AddProviderInstanceDialog";
 import { useDesktopCliCommand } from "../settings/CliCommandSettingsRow";
 import { CodexSetupSection } from "../settings/CodexSetupSection";
@@ -248,7 +249,8 @@ export function WelcomePage({
   // Without import permission, starting simply skips the projects.
   const selected = projectImport.canWrite ? projectImport.selected : [];
   const newCount = selected.filter(projectImport.isNew).length;
-  const start = () => {
+  const [showJevSetup, setShowJevSetup] = useState(false);
+  const startWorkspace = () => {
     keepChoicesRef.current = scans.some((scan) => scan.data === null);
     if (selected.length === 0) {
       projectImport.finishAfterImport();
@@ -257,6 +259,24 @@ export function WelcomePage({
     // Stored now, so after a restart mid-import these stay checked even once they exist.
     projectImport.setSelectedKeys(new Set(selected.map((candidate) => candidate.key)));
     void projectImport.runImport(selected);
+  };
+
+  const start = async () => {
+    const bridge = window.desktopBridge;
+    const status =
+      isPrimary && bridge?.setMissionControlJevKey
+        ? await bridge.getMissionControlJevStatus?.().catch(() => "unsupported" as const)
+        : undefined;
+    if (status === "disabled") {
+      setShowJevSetup(true);
+    } else {
+      startWorkspace();
+    }
+  };
+
+  const finishJevSetup = () => {
+    setShowJevSetup(false);
+    startWorkspace();
   };
 
   return (
@@ -294,7 +314,7 @@ export function WelcomePage({
               {agentReady ? (
                 <span />
               ) : (
-                <Button variant="ghost-muted" disabled={isImporting} onClick={start}>
+                <Button variant="ghost-muted" disabled={isImporting} onClick={() => void start()}>
                   Start without an agent
                 </Button>
               )}
@@ -302,7 +322,7 @@ export function WelcomePage({
                 {agentReady ? null : (
                   <span className="text-xs text-muted-foreground">Set up one agent to start.</span>
                 )}
-                <Button disabled={!agentReady || isImporting} onClick={start}>
+                <Button disabled={!agentReady || isImporting} onClick={() => void start()}>
                   {isImporting
                     ? selected.length > 0
                       ? "Importing…"
@@ -319,6 +339,13 @@ export function WelcomePage({
           </div>
         </div>
       </div>
+      {showJevSetup ? (
+        <JevSetupDialog
+          onClose={() => setShowJevSetup(false)}
+          onComplete={finishJevSetup}
+          onSkip={finishJevSetup}
+        />
+      ) : null}
     </SidebarInset>
   );
 }

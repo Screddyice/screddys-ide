@@ -14,7 +14,7 @@ For workspace routing, `projectRepositories` maps a supported product key such a
 
 To connect SRCOS, set `srcosTenant` and the absolute path `srcosCredentialFile`. Store the HTTPS `origin` and access `token` together in that separate JSON file with owner-only permissions (`chmod 600`).
 
-Mission Control routes and prioritizes tasks locally by default. To use JEV, set `jevCommand` to an absolute path to your own JEV MCP launcher. Set up its API credentials separately using the launcher's own configuration. To show Cursor Cloud activity in Screddy, set `cursorCloud` to `true` and supply `CURSOR_API_KEY` to the desktop process through its environment.
+Mission Control routes and prioritizes tasks locally by default. Enter your own OpenRouter API key in the optional JEV onboarding step, or set it up later under **Settings → General → Mission Control**. Screddy verifies JEV and stores the key in encrypted desktop storage. An independently configured `jevCommand` remains available when a saved OpenRouter key is absent. To show Cursor Cloud activity in Screddy, set `cursorCloud` to `true` and supply `CURSOR_API_KEY` to the desktop process through its environment.
 
 ## Build and run on Apple Silicon
 

@@ -1,7 +1,7 @@
 import type { MissionControlItem } from "@t3tools/contracts";
 
 import { isRestrictedMissionControlTask, routingCandidate } from "./handoff.ts";
-import { decideMissionControl } from "./jev.ts";
+import type { JevDecider } from "./jev.ts";
 import { obj } from "./sources.ts";
 
 const taskSources = new Set(["slack", "linear", "nebos", "tasks", "srcos"]);
@@ -33,20 +33,19 @@ const cacheLifetime = 30 * 60_000;
 const scores = new Map<string, { expiresAt: number; score: Promise<number | undefined> }>();
 
 export async function scoreMissionControlPriorities(
-  home: string,
   items: readonly MissionControlItem[],
   today: string,
   now: number,
-  command?: string,
+  jev?: JevDecider,
 ): Promise<ReadonlyMap<string, number>> {
-  if (!command) return new Map();
+  if (!jev) return new Map();
   for (const [key, entry] of scores) {
     if (entry.expiresAt <= now) scores.delete(key);
   }
 
   const candidates = items.flatMap((item) => {
     const signal = prioritySignal(item, today);
-    return signal ? [{ id: item.id, signal, key: JSON.stringify([home, command, signal]) }] : [];
+    return signal ? [{ id: item.id, signal, key: JSON.stringify([jev.revision, signal]) }] : [];
   });
   const missing = [
     ...new Map(
@@ -55,9 +54,7 @@ export async function scoreMissionControlPriorities(
   ].slice(0, 20);
   for (let offset = 0; offset < missing.length; offset += 10) {
     const batch = missing.slice(offset, offset + 10);
-    const response = decideMissionControl(
-      home,
-      command,
+    const response = jev.decide(
       batch.map(([, signal], index) => `priority_${index}: ${signal}`).join("\n"),
       Object.fromEntries(
         batch.map((_, index) => [

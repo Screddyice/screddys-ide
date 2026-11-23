@@ -1,3 +1,4 @@
+import { JevSettings } from "./JevSetupDialog";
 import { useAtomValue } from "@effect/atom-react";
 import { NotificationSettings } from "./NotificationSettings";
 import { PRIVACY_POLICY_URL } from "../../legalLinks";
@@ -772,6 +773,7 @@ export function GeneralSettingsPanel() {
 
   return (
     <SettingsPageContainer>
+      <JevSettings />
       <SettingsSection id="notifications" title="Notifications">
         <NotificationSettings />
         <SettingsRow

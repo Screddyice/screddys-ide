@@ -4,6 +4,8 @@ import { getMissionControlAgentActivity } from "./methods/missionControlAgentAct
 import {
   getMissionControl,
   getMissionControlReply,
+  getMissionControlJevStatus,
+  setMissionControlJevKey,
   routeMissionControlItems,
   runMissionControlAction,
 } from "./methods/missionControl.ts";
@@ -161,6 +163,8 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(receiveProviderAuthCallback);
   yield* ipc.handle(getMissionControl);
   yield* ipc.handle(getMissionControlReply);
+  yield* ipc.handle(getMissionControlJevStatus);
+  yield* ipc.handle(setMissionControlJevKey);
   yield* ipc.handle(runMissionControlAction);
   yield* ipc.handle(routeMissionControlItems);
   yield* ipc.handle(getMissionControlAgentActivity);

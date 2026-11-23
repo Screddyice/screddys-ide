@@ -1233,7 +1233,22 @@ export const MissionControlAgentActivitySchema = Schema.Struct({
 });
 export type MissionControlAgentActivity = typeof MissionControlAgentActivitySchema.Type;
 
+export const MissionControlJevStatusSchema = Schema.Literals([
+  "unsupported",
+  "disabled",
+  "enabled",
+]);
+export type MissionControlJevStatus = typeof MissionControlJevStatusSchema.Type;
+
+export const MissionControlJevSetupResultSchema = Schema.Union([
+  Schema.Struct({ ok: Schema.Literal(true) }),
+  Schema.Struct({ ok: Schema.Literal(false), error: Schema.String }),
+]);
+export type MissionControlJevSetupResult = typeof MissionControlJevSetupResultSchema.Type;
+
 export interface DesktopBridge {
+  getMissionControlJevStatus?: () => Promise<MissionControlJevStatus>;
+  setMissionControlJevKey?: (key: string | null) => Promise<MissionControlJevSetupResult>;
   getMissionControlAgentActivity: (refresh: boolean) => Promise<MissionControlAgentActivity>;
   getMissionControl: (request: MissionControlRequest) => Promise<MissionControlResponse>;
   getMissionControlReply: (itemId: string) => Promise<MissionControlReplyPreview>;

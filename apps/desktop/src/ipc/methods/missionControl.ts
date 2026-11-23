@@ -1,6 +1,8 @@
 import * as Schema from "effect/Schema";
 import {
   MissionControlRequestSchema,
+  MissionControlJevStatusSchema,
+  MissionControlJevSetupResultSchema,
   MissionControlHandoffBatchSchema,
   MissionControlHandoffSchema,
   MissionControlResponseSchema,
@@ -36,6 +38,12 @@ import {
   sharedContext,
   sourceStatus,
 } from "../../missionControl/sources.ts";
+import { launcherJev, type JevDecider } from "../../missionControl/jev.ts";
+import {
+  hasSecureJevStorage,
+  loadOpenRouterJev,
+  saveOpenRouterJev,
+} from "../../missionControl/openRouterJev.ts";
 import { routeItems } from "../../missionControl/handoff.ts";
 import { contextualizePriority, isRestrictedText } from "../../missionControl/context.ts";
 import { scoreMissionControlPriorities } from "../../missionControl/priority.ts";
@@ -98,6 +106,7 @@ async function readPriorities(
   baseDir: string,
   request: Extract<MissionControlRequest, { view: "priorities" }>,
   now: number,
+  openRouter?: JevDecider,
 ): Promise<MissionControlResponse> {
   const bindings = await bindingsAt(baseDir);
   if (!bindings) return empty;
@@ -216,7 +225,9 @@ async function readPriorities(
     today,
     team.lanes,
   );
-  const scores = await scoreMissionControlPriorities(home, items, today, now, bindings.jevCommand);
+  const jev =
+    openRouter ?? (bindings.jevCommand ? launcherJev(home, bindings.jevCommand) : undefined);
+  const scores = await scoreMissionControlPriorities(items, today, now, jev);
   return {
     configured: true,
     fetchedAt: DateTime.formatIso(
@@ -239,9 +250,10 @@ export async function readMissionControl(
   baseDir: string,
   request: MissionControlRequest,
   now: number,
+  openRouter?: JevDecider,
 ) {
   if (request.view === "priorities") {
-    return readPriorities(home, baseDir, request, now);
+    return readPriorities(home, baseDir, request, now, openRouter);
   }
 
   const bindings = await bindingsAt(baseDir);
@@ -270,8 +282,10 @@ export const getMissionControl = makeIpcMethod({
     // The trusted main-frame guard also applies. Personal data is never available to remote clients.
     if (!environment.isPackaged || environment.platform !== "darwin") return empty;
     const now = yield* Clock.currentTimeMillis;
+    const jev =
+      request.view === "priorities" ? yield* loadOpenRouterJev(environment.baseDir) : undefined;
     return yield* Effect.promise(() =>
-      readMissionControl(environment.homeDirectory, environment.baseDir, request, now),
+      readMissionControl(environment.homeDirectory, environment.baseDir, request, now, jev),
     );
   }),
 });
@@ -353,8 +367,42 @@ export const routeMissionControlItems = makeIpcMethod({
     if (!environment.isPackaged || environment.platform !== "darwin") {
       return requests.map(() => ({ kind: "unavailable" as const }));
     }
+    const jev = yield* loadOpenRouterJev(environment.baseDir);
     return yield* Effect.promise(() =>
-      routeItems(environment.homeDirectory, environment.baseDir, requests),
+      routeItems(environment.homeDirectory, environment.baseDir, requests, jev),
     );
+  }),
+});
+
+export const getMissionControlJevStatus = makeIpcMethod({
+  channel: IpcChannels.GET_MISSION_CONTROL_JEV_STATUS_CHANNEL,
+  payload: Schema.Void,
+  result: MissionControlJevStatusSchema,
+  handler: Effect.fn("desktop.ipc.missionControl.jevStatus")(function* () {
+    const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    if (
+      !environment.isPackaged ||
+      environment.platform !== "darwin" ||
+      !(yield* hasSecureJevStorage)
+    ) {
+      return "unsupported" as const;
+    }
+    return (yield* loadOpenRouterJev(environment.baseDir))
+      ? ("enabled" as const)
+      : ("disabled" as const);
+  }),
+});
+
+export const setMissionControlJevKey = makeIpcMethod({
+  channel: IpcChannels.SET_MISSION_CONTROL_JEV_KEY_CHANNEL,
+  // Reject malformed credentials without placing their value in a schema error.
+  payload: Schema.Unknown,
+  result: MissionControlJevSetupResultSchema,
+  handler: Effect.fn("desktop.ipc.missionControl.setJevKey")(function* (input) {
+    const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    if (!environment.isPackaged || environment.platform !== "darwin") {
+      return { ok: false as const, error: "JEV setup is available in the local Screddy app." };
+    }
+    return yield* saveOpenRouterJev(environment.baseDir, input);
   }),
 });
