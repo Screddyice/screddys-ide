@@ -1,0 +1,13 @@
+# Generated Crow setup proposal; review runtime and service requirements.
+steps:
+  quality:
+    image: node:24-bookworm
+    commands:
+      - "npm install -g pnpm@12.14.0"
+      - "pnpm install --frozen-lockfile"
+      - "pnpm run lint"
+      - "pnpm run typecheck"
+      - "pnpm run test"
+      - "pnpm run build"
+when:
+  event: [push, pull_request, manual]
