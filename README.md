@@ -30,6 +30,8 @@ pnpm exec node scripts/build-desktop-artifact.ts --platform mac --target dmg --a
 
 The optional `.env` step includes the upstream public T3 Connect configuration. The local build uses its own app bundle and stores server data in `~/.screddys-ide/userdata` and its macOS browser profile in `~/Library/Application Support/screddys-ide-v2`. Development uses `~/.screddys-ide-dev` by default. To run from source, use `pnpm run dev:desktop --no-seed`.
 
+If a background service (for example a launchd agent with `KeepAlive`) keeps a server running for `~/.screddys-ide` after you quit, the next launch of an updated app stops that server once it finds it's running a different version. The service then starts the installed version, so you no longer need to kill the old server by hand. The app only stops the process its own server entry point started, so other programs are never touched.
+
 ## Continuous integration
 
 Crow CI on Shawn's Mac runs `.woodpecker.yaml` on every push and pull request: the same Mission Control and chat tests as the GitHub **Verify Screddy changes** job, on Node 26.12.1 in a Linux arm64 container. On a pull request, the GitHub job's `crow-gate` step waits up to 3 minutes for a `ci/crow/...` status. If one appears, GitHub skips its own run and the Crow result is the merge check. If none appears (the Mac was asleep or offline), GitHub runs the job as before. Packaging runs started by hand are never gated.
