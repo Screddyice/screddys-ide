@@ -46,6 +46,7 @@ import {
 } from "@t3tools/contracts";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import type { ThreadStructureVisibleTurnItem } from "@t3tools/client-runtime/state/shell";
 import * as Schema from "effect/Schema";
 import { formatComposerModelMention } from "@t3tools/client-runtime/composer-model-mentions";
 import { isPasteAsTextShortcut } from "@t3tools/client-runtime/text-paste";
@@ -357,7 +358,9 @@ export interface ChatComposerProps {
 
   activeThreadId: ThreadId | null;
   activeThread: Thread | undefined;
+  activeLatestRun: Thread["latestRun"];
   activeThreadRuns: ReadonlyArray<OrchestrationV2Run>;
+  visibleTurnItems: ReadonlyArray<ThreadStructureVisibleTurnItem>;
   promptHistoryEntries: ReadonlyArray<TimelineEntry>;
   forceExpandedOnMobile: boolean;
   projectSelectionRequired: boolean;
@@ -506,7 +509,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onMultipleModelSelectionsChange: setMultipleModelSelections,
     activeThreadId,
     activeThread,
+    activeLatestRun,
     activeThreadRuns,
+    visibleTurnItems,
     promptHistoryEntries,
     forceExpandedOnMobile,
     projectSelectionRequired,
@@ -2265,19 +2270,26 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const expandMobileComposerStable = useStableCallback(expandMobileComposer);
 
   // Escape dismisses the suggestion so Tab moves focus again.
-  const { suggestion: promptSuggestion, dismiss: dismissPromptSuggestion } = usePromptSuggestion(
+  const { suggestion: promptSuggestion, dismiss: dismissPromptSuggestion } = usePromptSuggestion({
+    enabled: canOperateThread && settings.composerPromptSuggestionsEnabled,
     environmentId,
-    activeThread,
-    activeThreadRuns,
-  );
+    thread: activeThread,
+    latestRun: activeThread?.latestRun ?? activeLatestRun,
+    runs: activeThreadRuns,
+    timeline: promptHistoryEntries,
+    visibleTurnItems,
+  });
   // After /clear the next message starts a fresh session that cannot see what the suggestion refers to.
   const freshSessionArmed = useFreshSessionArmed(scopedThreadKey(routeThreadRef));
   // Offered only where the default placeholder would show, so it never hides a pending question.
   const offeredPromptSuggestion =
     phase !== "running" &&
     !isSendBusy &&
+    sendDisabledReason === null &&
+    prompt.length === 0 &&
     !freshSessionArmed &&
     !speechInput.freezesEditor &&
+    composerImages.length === 0 &&
     composerContextRecords.size === 0 &&
     !isComposerApprovalState &&
     !activePendingProgress &&

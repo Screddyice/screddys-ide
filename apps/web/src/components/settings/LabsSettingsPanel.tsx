@@ -175,7 +175,7 @@ function PromptSuggestionsRow() {
       serverScoped
       {...searchableSetting("prompt-suggestions-beta")}
       settingKeys={["promptSuggestionsEnabled"]}
-      description="Show a predicted next message in the empty composer after a Claude or Codex turn. Tab uses it. Each is an extra cached request on your plan. Needs Codex 0.165+. Claude threads update on restart."
+      description="Use Claude or Codex predictions when available. Each prediction uses an extra cached request on your plan. Requires Codex 0.165+ or a restarted Claude thread."
       control={
         <ScopedSwitch
           settingKeys={["promptSuggestionsEnabled"]}
@@ -183,7 +183,7 @@ function PromptSuggestionsRow() {
           onCheckedChange={(checked) =>
             updateSettings({ promptSuggestionsEnabled: Boolean(checked) })
           }
-          aria-label="Suggest next prompt"
+          aria-label="Provider-generated prompt suggestions"
         />
       }
     />
