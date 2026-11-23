@@ -1,0 +1,82 @@
+name: Package Screddy for Apple Silicon
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Preview version, such as 0.1.37-preview.1
+        required: true
+        default: 0.1.37-preview.1
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: screddy-desktop-preview
+  cancel-in-progress: false
+
+jobs:
+  package:
+    if: github.repository == 'Screddyice/screddys-ide' && github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      T3CODE_TELEMETRY_CHANNEL: dev
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Validate build inputs
+        shell: bash
+        run: |
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]]
+          test "$(uname -m)" = arm64
+          test "$(node -p 'process.version')" = "v$(node -p 'require("./package.json").engines.node')"
+          rustup target add aarch64-apple-darwin
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Mission Control fallback
+        run: |
+          pnpm exec playwright install chromium
+          pnpm --filter @t3tools/shared exec vp test run src/usageLimits.test.ts
+          pnpm --filter @t3tools/web exec vp test run --project browser \
+            src/components/MissionControlHandoffButton.browser.test.tsx \
+            src/components/MissionControlPriorities.browser.test.tsx
+
+      - name: Build Apple Silicon DMG and ZIP
+        run: |
+          cp .env.example .env
+          pnpm exec node scripts/build-desktop-artifact.ts \
+            --platform mac --target dmg --arch arm64 \
+            --build-version "$RELEASE_VERSION" --output-dir "$RUNNER_TEMP/screddy-packages"
+
+      - name: Verify artifacts and write checksums
+        working-directory: ${{ runner.temp }}/screddy-packages
+        run: |
+          dmg="Screddy-$RELEASE_VERSION-arm64.dmg"
+          zip="Screddy-$RELEASE_VERSION-arm64.zip"
+          hdiutil verify "$dmg"
+          unzip -tq "$zip"
+          shasum -a 256 "$dmg" "$zip" > SHA256SUMS
+          shasum -a 256 -c SHA256SUMS
+
+      - name: Upload private preview packages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: Screddy-${{ inputs.version }}-arm64
+          path: |
+            ${{ runner.temp }}/screddy-packages/*.dmg
+            ${{ runner.temp }}/screddy-packages/*.zip
+            ${{ runner.temp }}/screddy-packages/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
