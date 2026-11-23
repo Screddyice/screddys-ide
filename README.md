@@ -16,7 +16,13 @@ The optional `.env` step includes the upstream public T3 Connect configuration. 
 
 ## Build a preview from main
 
-Run **Package Screddy for Apple Silicon** on the `main` branch in GitHub Actions with a version such as `0.1.42-preview.20261122.1`. The workflow checks Mission Control and chat behavior on pull requests. Builds from `main` attach the DMG, ZIP, and SHA-256 checksums to the private workflow run. Developer ID signing, notarization, automatic updates, and release publication require a separate distribution setup.
+Run **Package Screddy for Apple Silicon** on the `main` branch in GitHub Actions with a version such as `0.1.42-preview.20261122.1`. The workflow checks Mission Control and chat behavior on pull requests. Builds from `main` attach the DMG, ZIP, and SHA-256 checksums to the private workflow run.
+
+## Build a stable release
+
+Run **Sign Screddy stable for Apple Silicon** on `main` with the release version, such as `0.1.42`. Set `CSC_LINK` and `CSC_KEY_PASSWORD` for the Developer ID Application signing identity and `APPLE_API_KEY`, `APPLE_API_KEY_ID`, and `APPLE_API_ISSUER` for notarization in the repository's Actions secrets. Publish the verified DMG, ZIP, blockmaps, `latest-mac.yml`, and `SHA256SUMS` together on the private GitHub release for the exact build commit.
+
+Install the signed stable DMG once and sign in to GitHub CLI on that Mac with access to this repository. Screddy checks the private stable feed automatically and prompts before installing an update.
 
 This repository imports the Screddy source snapshot based on `bb564f6e` and retains the upstream MIT license. The original T3 Code workflows are available under `.github/upstream-workflows` for reference.
 

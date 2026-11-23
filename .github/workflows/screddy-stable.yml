@@ -1,0 +1,126 @@
+name: Sign Screddy stable for Apple Silicon
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable version such as 0.1.42
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: screddy-apple-silicon-stable
+  cancel-in-progress: false
+
+jobs:
+  package:
+    if: github.repository == 'Screddyice/screddys-ide' && github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+    steps:
+      - name: Check release prerequisites
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(uname -m)" = arm64
+          for key in CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing stable release secret $key"
+              exit 1
+            fi
+          done
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: package.json
+          cache: pnpm
+      - name: Prepare locked build dependencies
+        run: |
+          test "$(node -p 'process.version')" = "v$(node -p 'require("./package.json").engines.node')"
+          rustup target add aarch64-apple-darwin
+          pnpm install --frozen-lockfile
+      - name: Verify private updates and Mission Control
+        run: |
+          node apps/web/node_modules/playwright/cli.js install --only-shell chromium
+          pnpm --filter @t3tools/desktop exec vp test run src/updates/DesktopUpdates.test.ts
+          pnpm --filter @t3tools/shared exec vp test run src/usageLimits.test.ts
+          pnpm --filter @t3tools/web exec vp test run --project browser \
+            src/components/MissionControlHandoffButton.browser.test.tsx \
+            src/components/MissionControlPriorities.browser.test.tsx
+      - name: Build, sign, and notarize stable packages
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          T3CODE_DESKTOP_UPDATE_REPOSITORY: Screddyice/screddys-ide
+          T3CODE_DESKTOP_UPDATE_PRIVATE: "true"
+        run: |
+          apple_key="$(mktemp "$RUNNER_TEMP/screddy-notary.XXXXXXXX")"
+          trap 'rm -f "$apple_key"' EXIT
+          chmod 600 "$apple_key"
+          printf '%s' "$APPLE_API_KEY" > "$apple_key"
+          export APPLE_API_KEY="$apple_key"
+          cp .env.example .env
+          pnpm exec node scripts/build-desktop-artifact.ts \
+            --platform mac --target dmg --arch arm64 --signed \
+            --build-version "$RELEASE_VERSION" --output-dir "$RUNNER_TEMP/screddy-stable"
+      - name: Verify release and update files
+        working-directory: ${{ runner.temp }}/screddy-stable
+        run: |
+          prefix="Screddy-$RELEASE_VERSION-arm64"
+          dmg="$prefix.dmg"
+          zip="$prefix.zip"
+          test -s latest-mac.yml
+          hdiutil verify "$dmg"
+          unzip -tq "$zip"
+          contents="$(mktemp -d)"
+          ditto -x -k "$zip" "$contents"
+          app="$contents/Screddy.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$RELEASE_VERSION"
+          test "$(lipo -archs "$app/Contents/MacOS/Screddy")" = arm64
+          codesign --verify --deep --strict "$app"
+          signature="$(codesign -d --verbose=4 "$app" 2>&1)"
+          grep -q '^Authority=Developer ID Application:' <<< "$signature"
+          xcrun stapler validate "$app"
+          feed="$app/Contents/Resources/app-update.yml"
+          grep -qx 'provider: github' "$feed"
+          grep -qx 'owner: Screddyice' "$feed"
+          grep -qx 'repo: screddys-ide' "$feed"
+          grep -qx 'private: true' "$feed"
+          if grep -qi '^\(token\|authorization\):' "$feed"; then exit 1; fi
+          ruby -ryaml -rdigest -rbase64 -e '
+            version, zip = ARGV
+            update = YAML.safe_load(File.read("latest-mac.yml"))
+            abort "Wrong update version" unless update["version"] == version
+            asset = update.fetch("files").find { |entry| entry["url"] == zip }
+            abort "Manifest ZIP checksum mismatch" unless asset &&
+              asset["sha512"] == Base64.strict_encode64(Digest::SHA512.file(zip).digest)
+          ' "$RELEASE_VERSION" "$zip"
+          shopt -s nullglob
+          shasum -a 256 "$dmg" "$zip" latest-mac.yml ./*.blockmap > SHA256SUMS
+          shasum -a 256 -c SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: Screddy-${{ inputs.version }}-signed-arm64
+          path: |
+            ${{ runner.temp }}/screddy-stable/*.dmg
+            ${{ runner.temp }}/screddy-stable/*.zip
+            ${{ runner.temp }}/screddy-stable/*.blockmap
+            ${{ runner.temp }}/screddy-stable/latest-mac.yml
+            ${{ runner.temp }}/screddy-stable/SHA256SUMS
+          if-no-files-found: error

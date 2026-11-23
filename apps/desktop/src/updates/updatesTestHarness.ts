@@ -39,6 +39,8 @@ export interface UpdatesHarnessOptions {
   readonly installRecord?: string | undefined;
   readonly policy?: DesktopUpdatePolicy.UpdatePolicy;
   readonly appVersion?: string;
+  readonly appUpdateYml?: string;
+  readonly privateGitHubAuthenticated?: boolean;
   /** Starts from in-memory settings with this track saved, as after a restart. */
   readonly savedChannel?: DesktopAppSettings.DesktopSettings["updateChannel"];
   /** Adds a WSL backend beside the primary, as on a Windows host with WSL enabled. */
@@ -53,6 +55,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
   const checkAllowedDowngrade: boolean[] = [];
   let fullChangelog = false;
   const feedUrls: ElectronUpdater.ElectronUpdaterFeedUrl[] = [];
+  const privateGitHubFeeds: Array<{ owner: string; repo: string }> = [];
   const listeners = new Map<string, Set<(...args: readonly unknown[]) => void>>();
   const sentStates: DesktopUpdateState[] = [];
   const installSteps: string[] = [];
@@ -78,6 +81,11 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
     setFeedURL: (options) =>
       Effect.sync(() => {
         feedUrls.push(options);
+      }),
+    configurePrivateGitHubFeed: (owner, repo) =>
+      Effect.sync(() => {
+        privateGitHubFeeds.push({ owner, repo });
+        return options.privateGitHubAuthenticated ?? false;
       }),
     setAutoDownload: () => Effect.void,
     setAutoInstallOnAppQuit: () => Effect.void,
@@ -247,6 +255,8 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
         ? (installRecords.get(path) ?? previousInstallRecord)
         : undefined;
       if (installRecord !== undefined) return Effect.succeed(installRecord);
+      if (path.endsWith("/app-update.yml") && options.appUpdateYml !== undefined)
+        return Effect.succeed(options.appUpdateYml);
       return path === "/missing/resources/package-type" && options.packageType !== undefined
         ? Effect.succeed(options.packageType)
         : Effect.fail(
@@ -302,6 +312,7 @@ export function makeHarness(options: UpdatesHarnessOptions = {}) {
     previousInstallRecord: () => previousInstallRecord,
     downloadCount: () => downloadCount,
     feedUrls: (): ElectronUpdater.ElectronUpdaterFeedUrl[] => feedUrls,
+    privateGitHubFeeds: () => privateGitHubFeeds,
     fullChangelog: () => fullChangelog,
     /** Whether each feed check could offer an older release, and the flag now. */
     checkAllowedDowngrade,

@@ -1,3 +1,4 @@
+import * as NodeChildProcess from "node:child_process";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -9,6 +10,25 @@ import { autoUpdater } from "electron-updater";
 type AutoUpdater = typeof autoUpdater;
 
 export type ElectronUpdaterFeedUrl = Parameters<AutoUpdater["setFeedURL"]>[0];
+
+function githubUpdateToken(): Promise<string | undefined> {
+  const environmentToken = process.env.GH_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim();
+  if (environmentToken) return Promise.resolve(environmentToken);
+  return new Promise((resolve) => {
+    NodeChildProcess.execFile(
+      "gh",
+      ["auth", "token", "--hostname", "github.com"],
+      {
+        encoding: "utf8",
+        env: { ...process.env, GH_DEBUG: "", GH_PROMPT_DISABLED: "1" },
+        maxBuffer: 4096,
+        timeout: 8_000,
+        windowsHide: true,
+      },
+      (error, stdout) => resolve(error ? undefined : stdout.trim() || undefined),
+    );
+  });
+}
 
 export class ElectronUpdaterCheckForUpdatesError extends Schema.TaggedError<ElectronUpdaterCheckForUpdatesError>()(
   "ElectronUpdaterCheckForUpdatesError",
@@ -59,6 +79,7 @@ export class ElectronUpdater extends Context.Service<
   ElectronUpdater,
   {
     readonly setFeedURL: (options: ElectronUpdaterFeedUrl) => Effect.Effect<void>;
+    readonly configurePrivateGitHubFeed: (owner: string, repo: string) => Effect.Effect<boolean>;
     readonly setAutoDownload: (value: boolean) => Effect.Effect<void>;
     readonly setAutoInstallOnAppQuit: (value: boolean) => Effect.Effect<void>;
     readonly setChannel: (channel: string) => Effect.Effect<void>;
@@ -88,6 +109,19 @@ export const make = ElectronUpdater.of({
       return Effect.void;
     });
   }),
+  configurePrivateGitHubFeed: Effect.fn("ElectronUpdater.configurePrivateGitHubFeed")(
+    (owner, repo) =>
+      Effect.tryPromise({
+        try: async () => {
+          const token = await githubUpdateToken();
+          if (!token || /\s/.test(token)) return false;
+          // The token stays in the updater's runtime and is never written to app-update.yml.
+          autoUpdater.setFeedURL({ provider: "github", owner, repo, private: true, token });
+          return true;
+        },
+        catch: () => undefined,
+      }).pipe(Effect.orElseSucceed(() => false)),
+  ),
   setAutoDownload: Effect.fn("ElectronUpdater.setAutoDownload")(function (value) {
     return Effect.suspend(() => {
       autoUpdater.autoDownload = value;
