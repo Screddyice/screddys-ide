@@ -1,17 +1,14 @@
 import type { DesktopBridge } from "@t3tools/contracts";
-import { makeWindow } from "@t3tools/shared/usageFormat";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { useUsage } from "../../state/usage";
-import { buildDesktopUsageSnapshot } from "./desktopUsageSnapshot";
+import {
+  buildDesktopUsageSnapshot,
+  currentUsageRange as currentRange,
+} from "./desktopUsageSnapshot";
 
 const REFRESH_MS = 5 * 60_000;
-
-function currentRange() {
-  const now = new Date();
-  return { month: makeWindow(30, now), weekStart: makeWindow(7, now).sinceDay };
-}
 
 export function DesktopTokenUsageCoordinator() {
   const bridge = window.desktopBridge;

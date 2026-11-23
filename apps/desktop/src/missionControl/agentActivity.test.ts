@@ -5,6 +5,8 @@ import { providerStatus, workstreamStatus } from "./agentActivity.ts";
 describe("Mission Control agent statuses", () => {
   it("preserves reported run states and leaves unknown states as recent", () => {
     expect(providerStatus("RUNNING")).toBe("running");
+    // Claude Code reports a session mid-turn as busy.
+    expect(providerStatus("busy")).toBe("running");
     expect(providerStatus("WAITING_FOR_BACKGROUND_WORK")).toBe("queued");
     expect(providerStatus("permission")).toBe("needs-input");
     expect(providerStatus("READY")).toBe("completed");

@@ -36,6 +36,7 @@ function timestamp(value: unknown): string | null {
 export function providerStatus(value: unknown): MissionControlAgentStatus {
   switch (str(value).toLowerCase().replaceAll("-", "_")) {
     case "running":
+    case "busy":
     case "working":
     case "in_progress":
     case "active":
