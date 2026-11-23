@@ -25,7 +25,7 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 
 import { ComposerHandleContext } from "../../composerHandleContext";
 import { type DraftId, useComposerDraftStore } from "../../composerDraftStore";
@@ -50,6 +50,7 @@ import { useEnvironments } from "../../state/environments";
 import { useEnvironmentsWithScope } from "../../state/session";
 import { useEnvironmentShellStatus } from "../../state/shell";
 import { useEnvironmentThread, useOpenThreadFamily } from "../../state/threads";
+import { buildThreadRouteParams } from "../../threadRoutes";
 import ChatView from "../ChatView";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { Button } from "../ui/button";
@@ -61,7 +62,11 @@ import {
   type SplitPaneMove,
 } from "./SplitPaneMoveHandle";
 import { SplitPaneResizeHandle } from "./SplitPaneResizeHandle";
-import { SplitPaneThreadSelector, splitPaneHeaderClass } from "./SplitPaneThreadSelector";
+import {
+  PrimarySplitPaneSelectorContext,
+  SplitPaneThreadSelector,
+  splitPaneHeaderClass,
+} from "./SplitPaneThreadSelector";
 import { SplitContext, SplitThreadButton, type SplitPaneCount } from "./SplitThreadButton";
 import {
   threadContextDropTargetProps,
@@ -155,10 +160,15 @@ export function SplitThreadWorkspace({
   );
   const panes = slots.filter((slot): slot is Pane => !slot.primary);
   const [openPickerId, setOpenPickerId] = useState<string | null>(null);
+  const [primarySelectorHidden, setPrimarySelectorHidden] = useState(false);
+  const primaryPickerId = useId();
+  const primarySelectorRef = useRef<HTMLButtonElement>(null);
+  const navigate = useNavigate();
   const layoutRef = useRef<SplitLayoutElement>(null);
   const paneCount = slots.length as SplitPaneCount;
   const stackedTracks = `--split-stack-${paneCount}` as const;
   const primaryKey = currentThread ? scopedThreadKey(currentThread) : null;
+  const primaryPickerOpen = openPickerId === primarySlot.id;
   const snapEnabled = !standalone && paneCount === 1 && primaryKey !== null;
   const promotions = useComposerDraftStore((store) => store.promotedDraftRedirects);
   const drafts = useComposerDraftStore((store) => store.draftThreadsByThreadKey);
@@ -192,6 +202,7 @@ export function SplitThreadWorkspace({
   const [previousPrimaryKey, setPreviousPrimaryKey] = useState(primaryKey);
   if (previousPrimaryKey !== primaryKey) {
     setPreviousPrimaryKey(primaryKey);
+    if (primaryPickerOpen) setOpenPickerId(null);
     if (panes.some((pane) => selectedThreadKey(pane) === primaryKey)) {
       setSlots(
         slots.map((slot) =>
@@ -312,6 +323,10 @@ export function SplitThreadWorkspace({
     };
   }
 
+  function closePrimaryPicker() {
+    setOpenPickerId((current) => (current === primarySlot.id ? null : current));
+  }
+
   const primaryPane = (index: number) => (
     <div
       key={primarySlot.id}
@@ -325,7 +340,53 @@ export function SplitThreadWorkspace({
       )}
     >
       <PrimarySplitPaneMoveContext value={primaryKey ? moveInfo(primarySlot.id, index) : null}>
-        {children}
+        <PrimarySplitPaneSelectorContext
+          value={
+            paneCount > 1 && primaryKey
+              ? {
+                  controls: {
+                    ref: primarySelectorRef,
+                    paneNumber: index + 1,
+                    pickerId: primaryPickerId,
+                    open: primaryPickerOpen,
+                    hidden: primarySelectorHidden,
+                    onToggle: () => setOpenPickerId(primaryPickerOpen ? null : primarySlot.id),
+                    onToggleHidden: () => {
+                      closePrimaryPicker();
+                      setPrimarySelectorHidden((hidden) => !hidden);
+                    },
+                  },
+                  picker: primaryPickerOpen && (
+                    <SplitThreadPicker
+                      id={primaryPickerId}
+                      paneNumber={index + 1}
+                      threads={threads}
+                      otherSelections={panes.map(selectedThreadKey)}
+                      onDismiss={() => {
+                        closePrimaryPicker();
+                        primarySelectorRef.current?.focus();
+                      }}
+                      onChoose={(key) => {
+                        const ref = parseScopedThreadKey(key);
+                        if (!ref) return;
+                        closePrimaryPicker();
+                        void navigate({
+                          to: "/$environmentId/$threadId",
+                          params: buildThreadRouteParams(ref),
+                        });
+                      }}
+                      onDraft={(draftId) => {
+                        closePrimaryPicker();
+                        void navigate({ to: "/draft/$draftId", params: { draftId } });
+                      }}
+                    />
+                  ),
+                }
+              : null
+          }
+        >
+          {children}
+        </PrimarySplitPaneSelectorContext>
       </PrimarySplitPaneMoveContext>
       {paneCount > 1 && primaryKey && <SplitMovePreview />}
       {snapEnabled && (

@@ -116,3 +116,57 @@ it("uses a shorter composer in all four panes and expands it for multiline draft
     /First line[\s\S]*Second line[\s\S]*Third line/,
   );
 });
+
+it("hides and restores the primary selector without disturbing split chats or their drafts", async () => {
+  const viewport = { width: window.innerWidth, height: window.innerHeight };
+  await using _restoreViewport = {
+    [Symbol.asyncDispose]: () => page.viewport(viewport.width, viewport.height),
+  };
+  await page.viewport(1512, 980);
+  const threads = ["Build", "Review", "Design", "Release"].map((name) =>
+    threadWithHistory(name, 3),
+  );
+  using _environment = installFakeEnvironment(threads, { acceptCommands: true });
+  __setClientSettingsForTests({
+    ...DEFAULT_CLIENT_SETTINGS,
+    onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
+  });
+  const router = getRouter(
+    createMemoryHistory({ initialEntries: [`/${ENVIRONMENT_ID}/${threads[0]!.id}`] }),
+  );
+  await router.load();
+  await using _app = await render(<AppRoot router={router} />, { router: false });
+
+  await expect.element(page.getByRole("textbox", { name: "Message Thread Build" })).toBeVisible();
+  await page.getByRole("button", { name: "Split screen" }).click();
+  await page.getByRole("menuitemradio", { name: "2 panes" }).click();
+  const primary = page.getByRole("button", { name: "Choose a thread for pane 1" });
+  await expect.element(primary).toBeVisible();
+  const secondary = page.getByRole("button", { name: "Choose a thread for pane 2" });
+  const review = page.getByRole("region", { name: "Pane 2", exact: true });
+  await secondary.click();
+  await review.getByRole("button", { name: "Thread Review", exact: true }).click();
+  const draft = review.getByRole("textbox", { name: "Message Thread Review" });
+  await draft.click();
+  await userEvent.keyboard("Keep this draft");
+
+  await primary.click();
+  const picker = page.getByRole("group", { name: "Threads for pane 1" });
+  await expect.element(picker).toBeVisible();
+  await expect
+    .element(picker.getByRole("button", { name: "Thread Review", exact: true }))
+    .not.toBeInTheDocument();
+  await page.getByRole("button", { name: "Hide primary thread selector" }).click();
+  await expect.element(picker).not.toBeInTheDocument();
+  await expect.element(primary).not.toBeInTheDocument();
+  await expect.element(secondary).toBeVisible();
+  await expect.element(page.getByRole("textbox", { name: "Message Thread Build" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Show primary thread selector" }).click();
+  await expect.element(primary).toHaveTextContent("Thread Build");
+  await primary.click();
+  await picker.getByRole("button", { name: "Thread Design", exact: true }).click();
+  await expect.element(primary).toHaveTextContent("Thread Design");
+  await expect.element(page.getByRole("textbox", { name: "Message Thread Design" })).toBeVisible();
+  await expect.element(draft).toHaveTextContent("Keep this draft");
+});

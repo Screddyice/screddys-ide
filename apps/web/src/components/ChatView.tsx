@@ -286,6 +286,11 @@ import { ProviderSubagentBar } from "./chat/ProviderSubagentBar";
 import { getTriggerDisplayModelName } from "./chat/providerIconUtils";
 import { resolveScrollToEndClearance } from "./composerFooterLayout";
 import { ChatHeader } from "./chat/ChatHeader";
+import {
+  PrimarySplitPaneControls,
+  PrimarySplitPaneSelectorContext,
+  splitPaneHeaderClass,
+} from "./chat/SplitPaneThreadSelector";
 import { useSideChat } from "./chat/useSideChat";
 import { useRemoteOpenState } from "~/remoteOpen";
 import { shouldShowOpenInPicker } from "./chat/OpenInPicker.logic";
@@ -433,6 +438,8 @@ export default function ChatView(props: ChatViewProps) {
     embedded: parentPanel,
   } = props;
   const embedded = parentPanel !== undefined || props.splitPane === true;
+  const splitPaneSelector = use(PrimarySplitPaneSelectorContext);
+  const primarySplitPaneSelector = embedded ? null : splitPaneSelector;
   const canOperateThread = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const canOperateTerminal = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
   const draftId = routeKind === "draft" ? props.draftId : null;
@@ -3353,17 +3360,22 @@ export default function ChatView(props: ChatViewProps) {
           <header
             ref={threadPanelPopoverAnchorRef}
             data-chat-header
+            data-split-pane-header={primarySplitPaneSelector ? "" : undefined}
             className={cn(
               "relative bg-background [[data-panel-animations=true]_&]:motion-safe:transition-[padding-left] [[data-panel-animations=true]_&]:motion-safe:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:motion-safe:ease-out",
-              isElectron
-                ? cn(
-                    "drag-region flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center px-3 sm:px-5",
-                    reserveTitleBarControlInset &&
-                      !inlineRightPanelOwnsTitleBar &&
-                      "wco:pr-(--workspace-native-controls-inset)",
-                  )
-                : "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center pl-(--workspace-gutter-start) pr-(--workspace-gutter-end)",
-              COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+              primarySplitPaneSelector
+                ? splitPaneHeaderClass
+                : [
+                    isElectron
+                      ? cn(
+                          "drag-region flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center px-3 sm:px-5",
+                          reserveTitleBarControlInset &&
+                            !inlineRightPanelOwnsTitleBar &&
+                            "wco:pr-(--workspace-native-controls-inset)",
+                        )
+                      : "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center pl-(--workspace-gutter-start) pr-(--workspace-gutter-end)",
+                    COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+                  ],
             )}
           >
             {isElectron && rightPanelControlsAtRoot ? (
@@ -3382,6 +3394,14 @@ export default function ChatView(props: ChatViewProps) {
               activeThreadLinkOrigin={activeThreadShell?.linkOrigin?.label ?? null}
               activeProject={activeProject ?? null}
               parentThreadLink={headerParentThreadLink}
+              splitPaneControls={
+                primarySplitPaneSelector && (
+                  <PrimarySplitPaneControls
+                    {...primarySplitPaneSelector.controls}
+                    title={activeThread.title}
+                  />
+                )
+              }
               onOpenThread={onOpenRelatedThreadStable}
               rightPanelOpen={inlineRightPanelOwnsTitleBar}
               onNewThreadInProject={handleNewThreadInActiveProjectStable}
@@ -3394,6 +3414,7 @@ export default function ChatView(props: ChatViewProps) {
         )}
 
         <div className="relative flex min-h-0 min-w-0 flex-1">
+          {primarySplitPaneSelector?.picker}
           <ThreadFindCanvas
             findOptions={{
               skills: timelineSkills,
@@ -3406,6 +3427,7 @@ export default function ChatView(props: ChatViewProps) {
             preview={canvasPreview}
             detailsCardTopInset={isThreadFindActive ? THREAD_FIND_BAR_RESERVED_HEIGHT : 0}
             composerOverlayElement={isDraftHeroState ? null : composerOverlayElement}
+            inert={Boolean(primarySplitPaneSelector?.picker)}
             data-chat-workspace-drop-target="true"
             onDragEnter={workspaceFileDropHandlers.onDragEnter}
             onDragOver={workspaceFileDropHandlers.onDragOver}

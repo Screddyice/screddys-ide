@@ -75,6 +75,8 @@ Use **Split workspace** in a thread header to add a side-by-side pane. Each pane
 
 For contributors: the chooser button is `SplitPaneThreadSelector` and the searchable thread list is `SplitThreadPicker`, so every pane shares one implementation.
 
+The first pane's thread chooser sits in that pane's own header. The eye button beside it hides the chooser and brings it back; hiding it leaves every pane's chat and draft as they were.
+
 ## Thread status in the sidebar
 
 A thread that is setting up or working shows a spinning blue ring in the sidebar, in the same blue the working icon used before. Threads waiting on you or on another thread keep their own icons.
