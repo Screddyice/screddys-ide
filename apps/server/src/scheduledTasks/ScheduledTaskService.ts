@@ -57,7 +57,7 @@ import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as DueHint from "../scheduling/DueHint.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
-import { isMissedFixedTimeRun, isSameSchedule, nextScheduledRunAt } from "./Schedule.ts";
+import { isMissedCalendarRun, isSameSchedule, nextScheduledRunAt } from "./Schedule.ts";
 import {
   redactHeaders,
   redactQuery,
@@ -340,15 +340,20 @@ function nextRunAfterRun(
   );
 }
 
-/** An enabled one-time task with a past time would never run, so saving it is an error. */
-function requireFutureOnce(
+/** Reject enabled schedules that cannot produce a future run. */
+function requireScheduledOccurrence(
   task: Pick<ScheduledTask, "enabled" | "schedule">,
   now: DateTime.DateTime,
   taskId: ScheduledTaskId,
 ) {
-  return task.enabled && task.schedule.type === "once" && nextRunAt(task, now) === null
-    ? taskError("The run time has passed. Pick a time in the future.", { taskId })
-    : Effect.void;
+  if (!task.enabled) return Effect.void;
+  if (task.schedule.type === "once" && nextRunAt(task, now) === null) {
+    return taskError("The run time has passed. Pick a time in the future.", { taskId });
+  }
+  if (task.schedule.type === "cron" && nextRunAt(task, now) === null) {
+    return taskError("This cron expression has no future run.", { taskId });
+  }
+  return Effect.void;
 }
 
 function errorMessage(error: unknown): string {
@@ -952,6 +957,7 @@ export const layer = Layer.effect(
               attachments: [],
               mode: "queue",
               ...(threadMode === "fresh_session" ? { freshContext: true } : {}),
+              ...(active.schedule.type === "cron" ? { modelSelection: active.modelSelection } : {}),
               createdBy: active.createdBy,
               creationSource: active.creationSource,
             })
@@ -1001,8 +1007,7 @@ export const layer = Layer.effect(
                   ),
               )
             : yield* Effect.exit(
-                // The stored selection only seeds fresh threads. A bound run
-                // follows the thread's current provider, so it passes none.
+                // Cron follows its saved model. Older bound schedules follow the thread's provider.
                 sendBound(ThreadId.make(active.threadId), active.projectId, 2).pipe(
                   Effect.as(ThreadId.make(active.threadId)),
                 ),
@@ -1168,7 +1173,7 @@ export const layer = Layer.effect(
         due,
         ({ task, dueAt }) =>
           Effect.suspend(() =>
-            isMissedFixedTimeRun(task.schedule, dueAt, now)
+            isMissedCalendarRun(task.schedule, dueAt, now)
               ? rescheduleMissedRun(task, now)
               : runTask(task, "scheduled"),
           ).pipe(
@@ -1408,7 +1413,7 @@ export const layer = Layer.effect(
         existingTask.enabled === input.enabled &&
         isSameSchedule(existingTask.schedule, schedule);
       if (!scheduleUnchanged)
-        yield* requireFutureOnce({ enabled: input.enabled, schedule }, now, id);
+        yield* requireScheduledOccurrence({ enabled: input.enabled, schedule }, now, id);
       const task: ScheduledTask = {
         id,
         title: input.title,
@@ -1464,7 +1469,7 @@ export const layer = Layer.effect(
         return yield* taskError(modeDenial, { taskId: input.id });
       }
       const now = yield* localNow;
-      yield* requireFutureOnce(
+      yield* requireScheduledOccurrence(
         { enabled: input.enabled, schedule: existing.schedule },
         now,
         input.id,

@@ -494,7 +494,9 @@ it.effect("a bound run follows its thread when promotion moves it mid-send", () 
 it.effect("a fresh-session task launches one thread, then starts each later run fresh in it", () =>
   Effect.gen(function* () {
     const launches = yield* Ref.make(0);
-    const sends = yield* Ref.make<Array<{ threadId: ThreadId; freshContext?: boolean }>>([]);
+    const sends = yield* Ref.make<
+      Array<{ threadId: ThreadId; freshContext?: boolean; model?: string }>
+    >([]);
     const launched = ThreadId.make("thread:fresh-session-task");
     const layer = ScheduledTaskService.layer.pipe(
       Layer.provide(
@@ -514,6 +516,9 @@ it.effect("a fresh-session task launches one thread, then starts each later run 
                 {
                   threadId: input.threadId,
                   ...(input.freshContext === undefined ? {} : { freshContext: input.freshContext }),
+                  ...(input.modelSelection === undefined
+                    ? {}
+                    : { model: input.modelSelection.model }),
                 },
               ]).pipe(Effect.as({} as never)),
           }),
@@ -560,6 +565,17 @@ it.effect("a fresh-session task launches one thread, then starts each later run 
 
       assert.equal(yield* Ref.get(launches), 1);
       assert.deepEqual(yield* Ref.get(sends), [{ threadId: launched, freshContext: true }]);
+      yield* service.upsert({
+        ...input,
+        schedule: { type: "cron", expression: "0 9 * * 1-5", timeZone: "America/Los_Angeles" },
+        modelSelection: { ...input.modelSelection, model: "gpt-5.5" },
+      });
+      yield* service.runNow({ id: input.id });
+      assert.deepEqual((yield* Ref.get(sends)).at(-1), {
+        threadId: launched,
+        freshContext: true,
+        model: "gpt-5.5",
+      });
       // Its thread stays in the old project, so moving the task leaves it for a new one.
       const moved = yield* service.upsert({
         ...input,

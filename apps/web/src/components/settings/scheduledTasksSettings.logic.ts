@@ -2,6 +2,7 @@ import { isListedThreadLineage, isWebhookDedupeTemplate } from "@t3tools/contrac
 import {
   EnvironmentId,
   MAX_WEBHOOK_DELIVERY_AGE_MINUTES,
+  parseScheduledTaskCron,
   type ProjectId,
   ScheduledTaskId,
   type ScheduledTask,
@@ -56,7 +57,7 @@ export function validateScheduledTasksSearch(raw: Record<string, unknown>) {
   };
 }
 
-export type ScheduleMode = "fixed" | "once" | "interval" | "webhook";
+export type ScheduleMode = "fixed" | "once" | "interval" | "cron" | "webhook";
 export type WorkspaceMode = "root" | "worktree" | "existing_worktree";
 
 export interface DraftState {
@@ -66,6 +67,8 @@ export interface DraftState {
   readonly enabled: boolean;
   readonly scheduleMode: ScheduleMode;
   readonly intervalMinutes: string;
+  readonly cronExpression: string;
+  readonly cronTimeZone: string;
   readonly timeOfDay: string;
   /** Local date and time as a `datetime-local` input value, such as 2026-11-02T15:00. */
   readonly runAt: string;
@@ -112,6 +115,17 @@ export function toDateTimeLocalValue(date: Date): string {
 }
 
 export function scheduleDraftErrors(draft: DraftState) {
+  if (
+    draft.scheduleMode === "cron" &&
+    parseScheduledTaskCron(draft.cronExpression, draft.cronTimeZone) === null
+  ) {
+    return [
+      {
+        title: "Invalid cron schedule",
+        description: "Enter a five-field cron expression and a valid time zone.",
+      },
+    ];
+  }
   if (draft.scheduleMode === "once") {
     const runAt = new Date(draft.runAt);
     if (Number.isNaN(runAt.getTime()))
@@ -171,6 +185,13 @@ export function webhookDeliveryLabel(delivery: {
 
 export function scheduleFromDraft(draft: DraftState): ScheduledTaskUpsertSchedule | null {
   if (scheduleDraftErrors(draft).length > 0) return null;
+  if (draft.scheduleMode === "cron") {
+    return {
+      type: "cron",
+      expression: draft.cronExpression.trim(),
+      timeZone: draft.cronTimeZone.trim(),
+    };
+  }
   if (draft.scheduleMode === "once") {
     const saved = draft.savedRunAt ? new Date(draft.savedRunAt) : null;
     if (saved !== null && toDateTimeLocalValue(saved) === draft.runAt)
@@ -253,6 +274,11 @@ export function taskToDraft(task: ScheduledTask): DraftState {
     scheduleMode: schedule.type === "fixed_time" ? "fixed" : schedule.type,
     intervalMinutes:
       schedule.type === "interval" ? String(Math.max(1, schedule.everyMs / 60_000)) : "15",
+    cronExpression: schedule.type === "cron" ? schedule.expression : "",
+    cronTimeZone:
+      schedule.type === "cron"
+        ? schedule.timeZone
+        : Intl.DateTimeFormat().resolvedOptions().timeZone,
     // A time input shows nothing for an unpadded hour such as 9:05, which agents may save.
     timeOfDay: schedule.type === "fixed_time" ? schedule.timeOfDay.padStart(5, "0") : "09:00",
     runAt: schedule.type === "once" ? toDateTimeLocalValue(new Date(schedule.runAt)) : "",

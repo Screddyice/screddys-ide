@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 
-import { isSameSchedule, nextScheduledRunAt } from "./Schedule.ts";
+import { isMissedCalendarRun, isSameSchedule, nextScheduledRunAt } from "./Schedule.ts";
 
 describe("scheduled task schedule calculation", () => {
   it("skips to the next matching fixed-time weekday", () => {
@@ -24,6 +24,20 @@ describe("scheduled task schedule calculation", () => {
     expect(parts?.weekDay).toBe(1);
     expect(parts?.hour).toBe(9);
     expect(parts?.minute).toBe(0);
+  });
+
+  it("runs cron in the selected zone and skips missed calendar slots", () => {
+    const schedule = {
+      type: "cron",
+      expression: "0 9 * * 1-5",
+      timeZone: "America/Los_Angeles",
+    } as const;
+    const now = DateTime.makeZonedUnsafe("2026-10-30T17:00:00Z", { timeZone: "UTC" });
+    const next = nextScheduledRunAt(schedule, now);
+    expect(next && DateTime.formatIso(next)).toBe("2026-11-02T17:00:00.000Z");
+    const due = DateTime.makeUnsafe("2026-11-02T17:00:00Z");
+    expect(isMissedCalendarRun(schedule, due, DateTime.add(due, { minutes: 11 }))).toBe(true);
+    expect(isSameSchedule(schedule, { ...schedule, timeZone: "UTC" })).toBe(false);
   });
 
   it("compares schedules structurally", () => {
