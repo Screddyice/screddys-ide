@@ -30,6 +30,10 @@ pnpm exec node scripts/build-desktop-artifact.ts --platform mac --target dmg --a
 
 The optional `.env` step includes the upstream public T3 Connect configuration. The local build uses its own app bundle and stores server data in `~/.screddys-ide/userdata` and its macOS browser profile in `~/Library/Application Support/screddys-ide-v2`. Development uses `~/.screddys-ide-dev` by default. To run from source, use `pnpm run dev:desktop --no-seed`.
 
+## Continuous integration
+
+Crow CI on Shawn's Mac runs `.woodpecker.yaml` on every push and pull request: the same Mission Control and chat tests as the GitHub **Verify Screddy changes** job, on Node 26.12.1 in a Linux arm64 container. On a pull request, the GitHub job's `crow-gate` step waits up to 3 minutes for a `ci/crow/...` status. If one appears, GitHub skips its own run and the Crow result is the merge check. If none appears (the Mac was asleep or offline), GitHub runs the job as before. Packaging runs started by hand are never gated.
+
 ## Build a preview from main
 
 Run **Package Screddy for Apple Silicon** on the `main` branch in GitHub Actions with a version such as `0.1.42-preview.20261122.1`. The workflow checks Mission Control and chat behavior on pull requests. Builds from `main` attach the DMG, ZIP, and SHA-256 checksums to the workflow run.

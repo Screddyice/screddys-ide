@@ -19,9 +19,45 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Crow CI on Shawn's Mac runs the same PR checks (.woodpecker.yaml) and posts a
+  # ci/crow/... status within seconds of a push. On a PR this job waits up to 3 minutes
+  # for one: found, the verify job is skipped and Crow's result is the merge check;
+  # none (Mac asleep or offline, webhook lost), the verify job runs here as before.
+  # Packaging runs (workflow_dispatch) never wait.
+  crow-gate:
+    if: github.repository == 'Screddyice/screddys-ide' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      statuses: read
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "Packaging run: not gated on Crow."; echo run=true >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          for _ in $(seq 1 12); do
+            n=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/statuses" \
+              --jq '[.[] | select(.context | startswith("ci/crow/"))] | length' || echo 0)
+            if [ "${n:-0}" -gt 0 ]; then
+              echo "Crow picked up $SHA; skipping GitHub verification (Crow's status is the check)."
+              echo run=false >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            sleep 15
+          done
+          echo "No Crow status on $SHA after 3 minutes (Mac asleep or offline); verifying on GitHub."
+          echo run=true >> "$GITHUB_OUTPUT"
+
   package:
     name: ${{ github.event_name == 'pull_request' && 'Verify Screddy changes' || 'Build Apple Silicon packages' }}
-    if: github.repository == 'Screddyice/screddys-ide' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
+    needs: crow-gate
+    if: needs.crow-gate.outputs.run == 'true'
     runs-on: macos-15
     timeout-minutes: 30
     env:

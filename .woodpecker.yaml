@@ -1,0 +1,21 @@
+# Mirrors the "Verify Screddy changes" GitHub job on the Linux arm64 Crow agent.
+steps:
+  verify:
+    image: node:26.12.1-bookworm
+    commands:
+      - test "$(node -p 'process.version')" = "v$(node -p 'require("./package.json").engines.node')"
+      - npm install -g "$(node -p 'require("./package.json").packageManager')"
+      - pnpm install --frozen-lockfile
+      - node apps/web/node_modules/playwright/cli.js install --with-deps --only-shell chromium
+      - pnpm --filter @t3tools/shared exec vp test run src/usageLimits.test.ts
+      - pnpm --filter @t3tools/desktop exec vp test run src/missionControl src/ipc/methods/missionControl.test.ts
+      - >-
+        pnpm --filter @t3tools/web exec vp test run --project browser
+        src/components/MissionControlHandoffButton.browser.test.tsx
+        src/components/MissionControlPriorities.browser.test.tsx
+        src/components/onboarding/WelcomePage.import.browser.test.tsx
+        src/components/ChatView.modelPick.browser.test.tsx
+        src/components/ChatView.splitComposer.browser.test.tsx
+        src/components/chat/SplitThreadWorkspace.browser.test.tsx
+when:
+  event: [push, pull_request, manual]
