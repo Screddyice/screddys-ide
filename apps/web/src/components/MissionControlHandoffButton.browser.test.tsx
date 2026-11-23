@@ -10,7 +10,7 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import { expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import * as Option from "effect/Option";
 import { page } from "vite-plus/test/browser";
 import "~/index.css";
@@ -20,6 +20,7 @@ import { appAtomRegistry } from "../rpc/atomRegistry";
 import type { EnvironmentPresentation } from "../state/environments";
 import { environmentServerConfigsAtom } from "../state/server";
 import {
+  grokBotPromptUrl,
   MissionControlHandoffButton,
   useMissionControlHandoffs,
 } from "./MissionControlHandoffButton";
@@ -395,7 +396,7 @@ it("launches Grok Bot when a main assistant is not configured", async () => {
   expect(clip).not.toHaveBeenCalled();
 });
 
-it("opens the named assistant with a conversation link and leaves its draft alone", async () => {
+it("opens the named assistant with the task typed into its message box", async () => {
   const url = "grokbot://app/v1/agent?id=fixture";
   using bridge = installBridge({
     kind: "grok",
@@ -408,9 +409,36 @@ it("opens the named assistant with a conversation link and leaves its draft alon
   await expect.element(action.getByText("Test Assistant")).toBeVisible();
   await action.click();
   await expect.poll(() => bridge.openExternal.mock.calls.length).toBe(1);
-  expect(bridge.openExternal).toHaveBeenCalledExactlyOnceWith(url);
+  const opened = new URL(bridge.openExternal.mock.calls[0]![0] as string);
+  expect(opened.pathname).toBe("/v1/prompt");
+  expect([...opened.searchParams.keys()]).toEqual(["id", "text"]);
+  expect(opened.searchParams.get("id")).toBe("fixture");
+  const text = opened.searchParams.get("text") ?? "";
+  expect(text).toContain("Help me tackle this Mission Control task.");
+  expect(text).toContain(JSON.stringify(item.title));
   expect(clip).not.toHaveBeenCalled();
   expect(calls.start).not.toHaveBeenCalled();
+});
+
+describe("grokBotPromptUrl", () => {
+  it("keeps the bot, strips characters Grok Bot refuses and fits its length limit", () => {
+    const href = grokBotPromptUrl(
+      "grokbot://app/v1/agent?id=fixture",
+      "Reply\u200b to Ana \u202e" + "x".repeat(2000),
+    );
+    const url = new URL(href!);
+    expect(url.searchParams.get("id")).toBe("fixture");
+    const text = url.searchParams.get("text")!;
+    expect(text.startsWith("Reply to Ana ")).toBe(true);
+    expect([...text].length).toBe(1000);
+    expect(text).not.toMatch(/[\u200b\u202e]/);
+  });
+
+  it("refuses anything but a bot conversation link", () => {
+    expect(grokBotPromptUrl("grokbot://app", "hi")).toBeNull();
+    expect(grokBotPromptUrl("https://example.com/v1/agent?id=x", "hi")).toBeNull();
+    expect(grokBotPromptUrl("grokbot://app/v1/agent?id=x", "\u200b ")).toBeNull();
+  });
 });
 
 it.each(["needs_review", "unavailable"] as const)(

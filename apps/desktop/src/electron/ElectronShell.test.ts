@@ -54,30 +54,35 @@ describe("ElectronShell", () => {
     }).pipe(Effect.provide(ElectronShell.layer)),
   );
 
-  it.effect("opens the Grok Bot launcher and a conversation, and refuses prompt links", () =>
-    Effect.gen(function* () {
-      openExternalMock.mockResolvedValue(undefined);
+  it.effect(
+    "opens the Grok Bot launcher, a conversation and a bot prompt, and refuses other prompt links",
+    () =>
+      Effect.gen(function* () {
+        openExternalMock.mockResolvedValue(undefined);
 
-      const electronShell = yield* ElectronShell.ElectronShell;
-      const results = yield* Effect.forEach(
-        [
-          "grokbot://app",
-          "grokbot://app/v1/agent?id=bot",
-          "grokbot://app/v1/prompt?id=bot&text=hi",
-          "grokbot://app/v1/prompt?id=bot&text=hi&send=true",
-          "grokbot://app/v1/prompt?text=hi",
-          "grokbot://app/v1/prompt?id=bot&text=hi#send",
-          "grokbot://",
-        ],
-        (url) => electronShell.openExternal(url),
-      );
+        const electronShell = yield* ElectronShell.ElectronShell;
+        const results = yield* Effect.forEach(
+          [
+            "grokbot://app",
+            "grokbot://app/v1/agent?id=bot",
+            "grokbot://app/v1/prompt?id=bot&text=hi",
+            "grokbot://app/v1/prompt?id=bot&text=hi&send=true",
+            "grokbot://app/v1/prompt?text=hi",
+            "grokbot://app/v1/prompt?id=bot&text=hi#send",
+            "grokbot://app/v1/prompt?id=bot&text=%20",
+            "grokbot://app/v1/prompt?id=bot&text=" + "a".repeat(1001),
+            "grokbot://",
+          ],
+          (url) => electronShell.openExternal(url),
+        );
 
-      assert.deepEqual(results, [true, true, false, false, false, false, false]);
-      assert.deepEqual(openExternalMock.mock.calls, [
-        ["grokbot://app"],
-        ["grokbot://app/v1/agent?id=bot"],
-      ]);
-    }).pipe(Effect.provide(ElectronShell.layer)),
+        assert.deepEqual(results, [true, true, true, false, false, false, false, false, false]);
+        assert.deepEqual(openExternalMock.mock.calls, [
+          ["grokbot://app"],
+          ["grokbot://app/v1/agent?id=bot"],
+          ["grokbot://app/v1/prompt?id=bot&text=hi"],
+        ]);
+      }).pipe(Effect.provide(ElectronShell.layer)),
   );
 
   it.effect("opens local editor file deep links", () =>

@@ -12,7 +12,7 @@ import * as Option from "effect/Option";
 
 import * as Electron from "electron";
 
-import { isGrokBotConversationUrl } from "./GrokBotLink.ts";
+import { isGrokBotConversationUrl, isGrokBotPromptUrl } from "./GrokBotLink.ts";
 
 // Remote editor deep links and local editor file links must reach the OS handler.
 const SAFE_WEB_PROTOCOLS = new Set(["http:", "https:"]);
@@ -54,6 +54,7 @@ export function parseSafeExternalUrl(rawUrl: unknown): Option.Option<string> {
     return SAFE_WEB_PROTOCOLS.has(url.protocol) ||
       APP_LAUNCH_URLS.has(url.href) ||
       isGrokBotConversationUrl(url) ||
+      isGrokBotPromptUrl(url) ||
       isRemoteEditorUrl(url) ||
       isLocalEditorFileUrl(url)
       ? Option.some(url.href)
