@@ -1064,6 +1064,54 @@ describe("describeUpdateErrorCause", () => {
   });
 });
 
+describe("DesktopUpdates with a private GitHub feed", () => {
+  const appUpdateYml = "provider: github\nowner: Screddyice\nrepo: screddys-ide\nprivate: true\n";
+  const env = { T3CODE_DESKTOP_MOCK_UPDATES: "false" };
+
+  it.effect("checks the packaged repository using the authenticated provider", () => {
+    const harness = makeHarness({ appUpdateYml, privateGitHubAuthenticated: true, env });
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        assert.equal((yield* updates.getState).status, "idle");
+        assert.deepEqual(harness.privateGitHubFeeds(), [
+          { owner: "Screddyice", repo: "screddys-ide" },
+        ]);
+        yield* updates.check("menu");
+        assert.equal(harness.checkCount(), 1);
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect("keeps private updates disabled when local GitHub sign-in is unavailable", () => {
+    const harness = makeHarness({ appUpdateYml, env });
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        const state = yield* updates.getState;
+        assert.equal(state.status, "disabled");
+        assert.include(state.message, "Sign in to GitHub");
+        assert.isFalse((yield* updates.check("menu")).checked);
+        assert.equal(harness.checkCount(), 0);
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+
+  it.effect("rejects a host override before accessing the GitHub credential", () => {
+    const harness = makeHarness({ appUpdateYml: appUpdateYml + "host: example.com\n", env });
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const updates = yield* DesktopUpdates.DesktopUpdates;
+        yield* updates.configure;
+        assert.equal((yield* updates.getState).status, "disabled");
+        assert.isEmpty(harness.privateGitHubFeeds());
+      }),
+    ).pipe(Effect.provide(Layer.merge(TestClock.layer(), harness.layer)));
+  });
+});
+
 describe("DesktopUpdates under a managed policy", () => {
   const message = "Example Corp manages T3 Code updates.";
   const managed = (

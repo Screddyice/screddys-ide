@@ -380,6 +380,7 @@ export const make = Effect.gen(function* () {
   const mockUpdates = config.mockUpdates && policy.message === null;
 
   const appUpdateYmlConfigRef = yield* Ref.make<Option.Option<AppUpdateYmlConfig>>(Option.none());
+  const privateFeedErrorRef = yield* Ref.make<string | null>(null);
   const activeUpdateActionRef = yield* Ref.make<Option.Option<UpdateAction>>(Option.none());
   const installRunningBackendsRef = yield* Ref.make<
     ReadonlyArray<DesktopBackendPool.DesktopBackendInstance>
@@ -465,18 +466,17 @@ export const make = Effect.gen(function* () {
 
   const resolveDisabledReason = Effect.gen(function* () {
     const hasFeedConfig = yield* hasUpdateFeedConfig;
-    return Option.fromNullishOr(
-      getAutoUpdateDisabledReason({
-        policy,
-        isDevelopment: environment.isDevelopment,
-        isPackaged: environment.isPackaged,
-        platform: environment.platform,
-        appImage: Option.getOrUndefined(config.appImagePath),
-        isDebPackage,
-        disabledByEnv: config.disableAutoUpdate,
-        hasUpdateFeedConfig: hasFeedConfig,
-      }),
-    );
+    const reason = getAutoUpdateDisabledReason({
+      policy,
+      isDevelopment: environment.isDevelopment,
+      isPackaged: environment.isPackaged,
+      platform: environment.platform,
+      appImage: Option.getOrUndefined(config.appImagePath),
+      isDebPackage,
+      disabledByEnv: config.disableAutoUpdate,
+      hasUpdateFeedConfig: hasFeedConfig,
+    });
+    return Option.fromNullishOr(reason ?? (yield* Ref.get(privateFeedErrorRef)));
   });
 
   // Without nightly, an install on that channel stays put until its user picks stable: moving it
@@ -1125,6 +1125,7 @@ export const make = Effect.gen(function* () {
 
       const appUpdateYmlConfig = yield* readAppUpdateYml;
       yield* Ref.set(appUpdateYmlConfigRef, appUpdateYmlConfig);
+      yield* Ref.set(privateFeedErrorRef, null);
 
       const notAppliedVersion = yield* readNotAppliedInstallVersion;
       yield* Ref.set(notAppliedVersionRef, notAppliedVersion);
@@ -1146,6 +1147,32 @@ export const make = Effect.gen(function* () {
           provider: "generic",
           url: policy.feedUrl,
         } as ElectronUpdater.ElectronUpdaterFeedUrl);
+      } else if (Option.isSome(appUpdateYmlConfig) && Option.isNone(yield* resolveDisabledReason)) {
+        const {
+          provider,
+          private: privateFeed,
+          owner,
+          repo,
+          host,
+          protocol,
+        } = appUpdateYmlConfig.value;
+        if (provider === "github" && privateFeed === "true") {
+          if (
+            !owner ||
+            !/^[\w-]+$/.test(owner) ||
+            !repo ||
+            !/^[\w.-]+$/.test(repo) ||
+            (host !== undefined && host !== "github.com") ||
+            (protocol !== undefined && protocol !== "https")
+          ) {
+            yield* Ref.set(privateFeedErrorRef, "The private GitHub update feed is invalid.");
+          } else if (!(yield* electronUpdater.configurePrivateGitHubFeed(owner, repo))) {
+            yield* Ref.set(
+              privateFeedErrorRef,
+              "Sign in to GitHub with the GitHub CLI and reopen Screddy to check for private updates.",
+            );
+          }
+        }
       }
 
       const settings = yield* desktopSettings.get;

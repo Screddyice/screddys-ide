@@ -547,6 +547,40 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     ),
   );
 
+  it.effect("packages a credential-free private feed for an opted-in release", () =>
+    Effect.gen(function* () {
+      const config = yield* createBuildConfig(
+        "mac",
+        "dmg",
+        "0.1.42",
+        false,
+        false,
+        undefined,
+        undefined,
+      );
+      assert.deepStrictEqual(config.publish, [
+        {
+          provider: "github",
+          owner: "Screddyice",
+          repo: "screddys-ide",
+          private: true,
+          releaseType: "release",
+        },
+      ]);
+    }).pipe(
+      Effect.provide(
+        ConfigProvider.layer(
+          ConfigProvider.fromEnv({
+            env: {
+              T3CODE_DESKTOP_UPDATE_REPOSITORY: "Screddyice/screddys-ide",
+              T3CODE_DESKTOP_UPDATE_PRIVATE: "true",
+            },
+          }),
+        ),
+      ),
+    ),
+  );
+
   it.effect("declares Calendar access for hosted commands in macOS builds", () =>
     Effect.gen(function* () {
       for (const version of ["0.1.0", "0.1.1-nightly.20261019.1"]) {
