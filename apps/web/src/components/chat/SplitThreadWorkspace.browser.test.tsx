@@ -76,6 +76,10 @@ vi.mock("../ChatView", () => ({
   ),
 }));
 
+vi.mock("./AppearanceToggleButton", () => ({
+  AppearanceToggleButton: () => null,
+}));
+
 it("selects four distinct threads and retains the remaining panes when one closes", async () => {
   await using screen = await render(<SplitThreadWorkspace standalone initialPaneCount={2} />);
   await screen.getByRole("button", { name: "Split screen" }).click();

@@ -66,6 +66,7 @@ import {
   type SplitPaneMove,
 } from "./SplitPaneMoveHandle";
 import { SplitPaneResizeHandle } from "./SplitPaneResizeHandle";
+import { AppearanceToggleButton } from "./AppearanceToggleButton";
 import { SplitContext, SplitThreadButton, type SplitPaneCount } from "./SplitThreadButton";
 import {
   threadContextDropTargetProps,
@@ -348,7 +349,10 @@ export function SplitThreadWorkspace({
           electron={standalone || isElectron}
           className={standalone ? "justify-end" : undefined}
         >
-          <SplitThreadButton />
+          <div className="flex shrink-0 items-center gap-1">
+            <SplitThreadButton />
+            <AppearanceToggleButton />
+          </div>
         </WorkspacePageHeader>
       ) : null}
       <div className="@container/split-workspace min-h-0 min-w-0 flex-1 overflow-auto">
