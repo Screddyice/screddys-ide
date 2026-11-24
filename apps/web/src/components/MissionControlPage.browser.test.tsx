@@ -47,7 +47,8 @@ it("defaults to Top priorities and shows the selected view beneath the Mission C
     filter: "all",
     refresh: false,
   });
-  expect(getMissionControlAgentActivity).not.toHaveBeenCalled();
+  // The Running tile counts outside agents, so the page reads the cached activity feed once.
+  expect(getMissionControlAgentActivity).toHaveBeenCalledWith(false);
 
   const scrollArea = workspace.lastElementChild as HTMLElement;
   scrollArea.scrollTop = scrollArea.scrollHeight;
@@ -68,4 +69,46 @@ it("defaults to Top priorities and shows the selected view beneath the Mission C
   await page.getByRole("option", { name: "Top priorities" }).click();
   await expect.element(selector).toHaveTextContent("Top priorities");
   await expect.element(screen.getByRole("heading", { name: "Top priorities" })).toBeVisible();
+});
+
+it("counts agents running outside Screddy in the Running tile and lists them", async () => {
+  const getMissionControl = vi.fn<DesktopBridge["getMissionControl"]>().mockResolvedValue({
+    configured: true,
+    fetchedAt: null,
+    mailboxes: [],
+    items: [],
+    sources: [],
+    context: null,
+    nextCursor: null,
+  });
+  const row = {
+    provider: "claude",
+    source: "Claude Code · workspace",
+    detail: "",
+    updatedAt: null,
+    url: null,
+  } as const;
+  const getMissionControlAgentActivity = vi
+    .fn<DesktopBridge["getMissionControlAgentActivity"]>()
+    .mockResolvedValue({
+      checkedAt: null,
+      rows: [
+        { ...row, id: "claude:1", title: "Fix the build", status: "running" },
+        { ...row, id: "claude:2", title: "Old session", status: "recent" },
+      ],
+      sources: [],
+    });
+  using _bridge = stubGlobal("desktopBridge", {
+    getMissionControl,
+    getMissionControlAgentActivity,
+    getClientSettings: async () => null,
+    getLocalEnvironmentEnabled: () => false,
+    getLocalEnvironmentBootstraps: () => [],
+  } satisfies Partial<DesktopBridge>);
+  await using screen = await render(<MissionControlPage />);
+  const running = screen.getByRole("button", { name: /^Running/ });
+  await expect.element(running).toHaveTextContent("Running1");
+  await running.click();
+  await expect.element(screen.getByText("Fix the build")).toBeVisible();
+  await expect.element(screen.getByText("Old session")).not.toBeInTheDocument();
 });

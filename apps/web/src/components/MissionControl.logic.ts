@@ -21,6 +21,24 @@ export function resolveMissionControlThreadStatus(
   return connected ? resolveSidebarThreadStatus(thread) : "offline";
 }
 
+const runningStatuses: ReadonlySet<MissionControlThreadStatus> = new Set(["preparing", "working"]);
+// A finished thread stays the user's move until they settle it.
+const attentionStatuses: ReadonlySet<MissionControlThreadStatus> = new Set([
+  "approval",
+  "input",
+  "request",
+  "failed",
+  "limited",
+  "ready",
+]);
+
+export function missionControlThreadView(
+  status: MissionControlThreadStatus,
+): "running" | "attention" | null {
+  if (runningStatuses.has(status)) return "running";
+  return attentionStatuses.has(status) ? "attention" : null;
+}
+
 /** Usage providers that report tokens for each Mission Control agent family. */
 const usageProviderByAgent = {
   openai: "codex",

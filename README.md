@@ -18,6 +18,8 @@ Switch between **Top priorities** and **Agent activity** with the view dropdown 
 
 The **Sources** section under the list appears only when a connected source is unavailable, and lists just those sources with the reason. Sources that are connected or partly covered are not listed.
 
+The **Running** tile counts Screddy threads that are working plus agents working outside Screddy that Agent activity can see, such as a busy Claude Code session, and lists both. A thread that has finished its turn says **Ready** and counts under **Needs attention** until you settle it; a settled thread says **Done** and is not counted.
+
 Agent activity reports live state for agents you run outside Screddy on this Mac. A Codex or Grok Build session is **running** while the newest turn in its session log is open and the log was written in the last 10 minutes; a Grok Build session waiting on a permission prompt shows as needing input. A Cursor chat is running while a `cursor-agent` process is working in its folder. Claude Code reports its own state. Cursor cloud agents need `cursorCloud` and `CURSOR_API_KEY`.
 
 To connect SRCOS, set `srcosTenant` and the absolute path `srcosCredentialFile`. Store the HTTPS `origin` and access `token` together in that separate JSON file with owner-only permissions (`chmod 600`).
