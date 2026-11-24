@@ -158,8 +158,8 @@ export function MissionControlAgentActivity({
   const [feed, setFeed] = useState<{ revision: number; data?: AgentActivity; error: boolean }>();
   const providerSnapshots = useEnvironmentProviders();
   const timeFormat = useClientSettings((settings) => settings.timestampFormat);
-  // Recomputed each render so "today" rolls over at midnight; same window key as the menu bar.
-  const usageRange = currentUsageRange();
+  // Held in state: useUsage re-renders whenever its window object changes identity. Same window key as the menu bar.
+  const [usageRange] = useState(currentUsageRange);
   const usage = useUsage(usageRange.month);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Starts and cleans up a read from the desktop account feeds.
