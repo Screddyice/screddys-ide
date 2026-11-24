@@ -1281,6 +1281,8 @@ export const DesktopTokenUsageSummary = Schema.Struct({
   topModel: Schema.optionalKey(
     Schema.Struct({ label: DesktopTokenUsageLabel, totalTokens: NonNegativeInt }),
   ),
+  /** Tokens added per minute between the last two usage reads; absent until two reads exist. */
+  tokensPerMinute: Schema.optionalKey(NonNegativeInt),
   records: NonNegativeInt,
   sessions: NonNegativeInt,
   isPartial: Schema.Boolean,

@@ -9,8 +9,10 @@ import {
   usagePlans,
   currentUsageRange as currentRange,
 } from "./desktopUsageSnapshot";
+import { useTokenThroughput } from "./useTokenThroughput";
 
-const REFRESH_MS = 5 * 60_000;
+// One read a minute keeps the menu bar throughput current.
+const REFRESH_MS = 60_000;
 
 export function DesktopTokenUsageCoordinator() {
   const bridge = window.desktopBridge;
@@ -43,6 +45,8 @@ function TokenUsagePublisher({
     range.weekStart,
     plans,
   );
+  const rate = useTokenThroughput(environments, snapshot?.today.totalTokens ?? null);
+  const summary = snapshot && rate !== null ? { ...snapshot, tokensPerMinute: rate } : snapshot;
   const busy = useRef(false);
   const navigate = useNavigate();
   const requestRefresh = useEffectEvent(() => {
@@ -78,8 +82,8 @@ function TokenUsagePublisher({
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Updates the native menu when authenticated usage data changes.
   useEffect(() => {
-    void publish({ loading: isPending, summary: snapshot }).catch(() => {});
-  }, [publish, isPending, snapshot]);
+    void publish({ loading: isPending, summary }).catch(() => {});
+  }, [publish, isPending, summary]);
 
   return null;
 }

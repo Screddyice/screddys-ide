@@ -44,6 +44,15 @@ function periodMenu(label: string, usage: DesktopTokenUsagePeriod): MenuItemCons
   };
 }
 
+/** The text beside the menu bar icon: today's tokens, then the throughput once it is measured. */
+export function usageTrayTitle({ summary }: DesktopTokenUsageMenuState): string {
+  if (summary === null) return "";
+  const today = `${formatTokens(summary.today.totalTokens)} tokens`;
+  return summary.tokensPerMinute === undefined
+    ? today
+    : `${today} · ${formatTokens(summary.tokensPerMinute)}/min`;
+}
+
 function usageMenuTemplate(
   { loading, summary }: DesktopTokenUsageMenuState,
   actions: UsageMenuActions,
@@ -58,6 +67,9 @@ function usageMenuTemplate(
           `Most used · ${summary.topModel.label} · ${formatTokens(summary.topModel.totalTokens)} tokens in 30 days`,
         ),
       );
+    }
+    if (summary.tokensPerMinute !== undefined) {
+      template.push(info(`Throughput · ${formatTokens(summary.tokensPerMinute)} tokens/min`));
     }
     template.push(
       periodMenu("Today", summary.today),
@@ -103,9 +115,7 @@ function startTokenUsageTray(iconPath: string, actions: UsageMenuActions) {
     const current = JSON.stringify(state);
     if (current === previous) return;
     tray.setContextMenu(Menu.buildFromTemplate(usageMenuTemplate(state, actions)));
-    tray.setTitle(
-      state.summary === null ? "" : `${formatTokens(state.summary.today.totalTokens)} tokens`,
-    );
+    tray.setTitle(usageTrayTitle(state));
     previous = current;
   }
   update(EMPTY_MENU);
