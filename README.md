@@ -77,6 +77,10 @@ Use **Split workspace** in a thread header to add a side-by-side pane. Each pane
 
 A thread that is setting up or working shows a spinning blue ring in the sidebar, in the same blue the working icon used before. Threads waiting on you or on another thread keep their own icons.
 
+## Appearance
+
+The sun or moon button in the sidebar footer switches between light and dark mode. The same button sits beside **Split workspace** in the thread header. A theme that has only one mode disables the button and says so in its tooltip.
+
 ## Upstream T3 Code documentation
 
 T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).

@@ -8,7 +8,9 @@ import "~/index.css";
 import { AppRoot } from "~/AppRoot";
 import "~/components/ChatView";
 import { __setClientSettingsForTests } from "~/hooks/useSettings";
+import { getThemeSnapshot, setAppearanceMode } from "~/hooks/useTheme";
 import { getRouter } from "~/router";
+import { THEME_APPEARANCE_MODE_STORAGE_KEY } from "~/themePalette";
 import {
   ENVIRONMENT_ID,
   installFakeEnvironment,
@@ -32,6 +34,9 @@ vi.mock(import("~/rpc/requestLatencyState"), async (original) => ({
 }));
 
 it("uses a shorter composer in all four panes and expands it for multiline drafts", async () => {
+  const { appearanceMode } = getThemeSnapshot();
+  using _restoreAppearance = { [Symbol.dispose]: () => setAppearanceMode(appearanceMode) };
+  setAppearanceMode("light");
   const viewport = { width: window.innerWidth, height: window.innerHeight };
   await using _restoreViewport = {
     [Symbol.asyncDispose]: () => page.viewport(viewport.width, viewport.height),
@@ -53,12 +58,24 @@ it("uses a shorter composer in all four panes and expands it for multiline draft
 
   const primaryEditor = page.getByRole("textbox", { name: "Message Thread Build" });
   await expect.element(primaryEditor).toBeVisible();
+  const sidebarFooter = page.elementLocator(
+    document.querySelector('[data-slot="sidebar-footer"]')!,
+  );
+  const workspace = page.elementLocator(document.querySelector('[data-slot="sidebar-inset"]')!);
+  const sidebarDarkMode = sidebarFooter.getByRole("button", { name: "Switch to dark mode" });
+  expect(sidebarDarkMode.elements()).toHaveLength(1);
   const overlay = (editor: Element) => editor.closest<HTMLElement>("[data-chat-composer-overlay]")!;
   const height = (element: Element) => element.getBoundingClientRect().height;
   const singlePaneHeight = height(overlay(primaryEditor.element()));
 
   await page.getByRole("button", { name: "Split screen" }).click();
   await page.getByRole("menuitemradio", { name: "4 panes" }).click();
+  await sidebarDarkMode.click();
+  expect(document.documentElement.classList.contains("dark")).toBe(true);
+  expect(localStorage.getItem(THEME_APPEARANCE_MODE_STORAGE_KEY)).toBe("dark");
+  await expect
+    .element(workspace.getByRole("button", { name: "Switch to light mode" }))
+    .toBeVisible();
   for (const [index, thread] of threads.slice(1).entries()) {
     const pane = page.getByRole("region", { name: `Pane ${index + 2}`, exact: true });
     await pane.getByRole("button", { name: /Choose a thread/ }).click();
@@ -90,6 +107,11 @@ it("uses a shorter composer in all four panes and expands it for multiline draft
 
   await page.getByRole("button", { name: "Split screen" }).click();
   await page.getByRole("menuitemradio", { name: "Single pane" }).click();
+  const lightMode = workspace.getByRole("button", { name: "Switch to light mode" });
+  await lightMode.click();
+  expect(document.documentElement.classList.contains("dark")).toBe(false);
+  expect(localStorage.getItem(THEME_APPEARANCE_MODE_STORAGE_KEY)).toBe("light");
+  await expect.element(sidebarDarkMode).toBeVisible();
   expect(primaryEditor.element().textContent).toMatch(
     /First line[\s\S]*Second line[\s\S]*Third line/,
   );

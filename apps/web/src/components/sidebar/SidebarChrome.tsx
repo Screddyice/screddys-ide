@@ -28,6 +28,7 @@ import {
   useEnvironmentStageLabel,
 } from "../SidebarStageBackdrop";
 import { Badge } from "../ui/badge";
+import { AppearanceToggleButton } from "../chat/AppearanceToggleButton";
 import { Button } from "../ui/button";
 import {
   SidebarFooter,
@@ -342,6 +343,9 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
           />
         </>
       )}
+      <SidebarMenuItem className="shrink-0">
+        <AppearanceToggleButton render={<SidebarMenuButton size="icon" />} tooltipSide="top" />
+      </SidebarMenuItem>
       <SidebarThreadUndoNotice />
       <SidebarUpdatePill />
     </SidebarMenu>

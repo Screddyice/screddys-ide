@@ -42,6 +42,7 @@ import { observeResize } from "~/lib/observeResize";
 import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
 import { useClientSettings } from "../../hooks/useSettings";
+import { AppearanceToggleButton } from "./AppearanceToggleButton";
 import { SplitContext, SplitThreadButton } from "./SplitThreadButton";
 import { PrimarySplitPaneMoveContext, SplitPaneMoveHandle } from "./SplitPaneMoveHandle";
 import { GuestShareIndicator } from "./GuestShareControls";
@@ -399,7 +400,12 @@ export const ChatHeader = memo(function ChatHeader({
           ) : null}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
-      {splitWorkspaceHasTitlebar ? null : <SplitThreadButton />}
+      {splitWorkspaceHasTitlebar ? null : (
+        <div className="flex shrink-0 items-center gap-1">
+          <SplitThreadButton />
+          <AppearanceToggleButton />
+        </div>
+      )}
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
     </div>
   );
