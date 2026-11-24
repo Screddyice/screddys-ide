@@ -141,73 +141,210 @@ async function codexCloud(home: string): Promise<Feed> {
   };
 }
 
-function codexHistory(home: string): Feed {
-  const db = new NodeSqlite.DatabaseSync(NodePath.join(home, ".codex", "state_5.sqlite"), {
-    readOnly: true,
-  });
+const LIVE_WINDOW_MS = 10 * 60_000;
+const PROMPT_WINDOW_MS = 60 * 60_000;
+const TURN_MARKERS = {
+  codex: { open: ["task_started"], closed: ["task_complete", "turn_aborted"] },
+  grok: { open: ["turn_started"], closed: ["turn_ended"] },
+} as const;
+
+type TurnLogKind = keyof typeof TURN_MARKERS;
+
+function turnLogEvent(kind: TurnLogKind, line: string): { type: string; phase: string } | null {
+  if (!line.includes('"type"')) return null;
   try {
-    const records = db
-      .prepare(
-        "SELECT id, title, updated_at FROM threads WHERE archived = 0 ORDER BY updated_at DESC LIMIT 20",
-      )
-      .all();
-    return {
-      rows: records.flatMap((r) => {
-        const title = trim(r.title);
-        if (!title || !r.id) return [];
-        return [
-          {
-            id: `codex-local:${str(r.id)}`,
-            provider: "openai",
-            source: "Codex on this Mac",
-            title,
-            detail: "Session history",
-            status: "recent",
-            updatedAt: timestamp(r.updated_at),
-            url: null,
-          } satisfies MissionControlAgentRow,
-        ];
-      }),
-      detail: "Recent local sessions. An update timestamp alone does not indicate a running task.",
-    };
-  } finally {
-    db.close();
+    const entry = obj(JSON.parse(line));
+    if (kind === "grok") return { type: str(entry.type), phase: str(entry.phase) };
+    // A marker quoted inside a message is a string, not the event payload.
+    return entry.type === "event_msg" ? { type: str(obj(entry.payload).type), phase: "" } : null;
+  } catch {
+    return null;
   }
 }
 
-function grokHistory(home: string): Feed {
-  const db = new NodeSqlite.DatabaseSync(
-    NodePath.join(home, ".grok", "sessions", "session_search.sqlite"),
-    { readOnly: true },
-  );
+/** Whether the newest turn in a CLI session log is still open, and waiting on the user or working. */
+export function turnLogStatus(input: {
+  readonly kind: TurnLogKind;
+  readonly log: string;
+  readonly lastWriteMs: number;
+  readonly now: number;
+}): MissionControlAgentStatus | null {
+  const markers = TURN_MARKERS[input.kind];
+  const lines = input.log.split("\n");
+  let phase = "";
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const event = turnLogEvent(input.kind, lines[index]!);
+    if (!event) continue;
+    if (!phase && event.type === "phase_changed") phase = event.phase;
+    if ((markers.closed as readonly string[]).includes(event.type)) return "recent";
+    if (!(markers.open as readonly string[]).includes(event.type)) continue;
+    const quietMs = input.now - input.lastWriteMs;
+    if (phase === "permission_prompt") {
+      return quietMs <= PROMPT_WINDOW_MS ? "needs-input" : "recent";
+    }
+    // A killed CLI leaves its turn open, so a quiet log stops counting as running.
+    return quietMs <= LIVE_WINDOW_MS ? "running" : "recent";
+  }
+  return null;
+}
+
+/** A turn marker can sit megabytes back in a long turn, so widen the tail until one is found. */
+async function liveTurnStatus(
+  kind: TurnLogKind,
+  path: string,
+  now: number,
+): Promise<MissionControlAgentStatus> {
   try {
-    const records = db
+    const file = await NodeFSP.open(path, "r");
+    try {
+      const { size, mtimeMs } = await file.stat();
+      if (now - mtimeMs > PROMPT_WINDOW_MS) return "recent";
+      for (let bytes = 256 * 1024; ; bytes *= 8) {
+        const length = Math.min(bytes, size);
+        const buffer = Buffer.alloc(length);
+        await file.read(buffer, 0, length, size - length);
+        const status = turnLogStatus({
+          kind,
+          log: buffer.toString("utf8"),
+          lastWriteMs: mtimeMs,
+          now,
+        });
+        if (status !== null || length === size || bytes >= 16 * 1024 * 1024) {
+          return status ?? "recent";
+        }
+      }
+    } finally {
+      await file.close();
+    }
+  } catch {
+    return "recent";
+  }
+}
+
+/** The newest chat in each folder that has a live cursor-agent process. */
+export function cursorLiveChats(
+  chats: readonly { readonly id: string; readonly cwd: string; readonly updated: number }[],
+  liveCwds: readonly string[],
+): ReadonlySet<string> {
+  const newest = new Map<string, { id: string; updated: number }>();
+  for (const chat of chats) {
+    if (!liveCwds.includes(chat.cwd)) continue;
+    const current = newest.get(chat.cwd);
+    if (!current || chat.updated > current.updated) newest.set(chat.cwd, chat);
+  }
+  return new Set([...newest.values()].map(({ id }) => id));
+}
+
+/** Working folders of running cursor-agent processes; empty when none or when ps/lsof fail. */
+async function cursorAgentCwds(): Promise<string[]> {
+  try {
+    const { stdout } = await execute("/bin/ps", ["-axo", "pid=,command="], { timeout: 5_000 });
+    const pids = stdout
+      .split("\n")
+      .filter((line) => /[/\s]cursor-agent(\s|$|\/)/.test(line))
+      .flatMap((line) => line.trim().match(/^\d+/) ?? []);
+    if (!pids.length) return [];
+    const listed = await execute(
+      "/usr/sbin/lsof",
+      ["-a", "-p", pids.join(","), "-d", "cwd", "-Fn"],
+      { timeout: 5_000 },
+    );
+    return listed.stdout
+      .split("\n")
+      .flatMap((line) => (line.startsWith("n") ? [line.slice(1)] : []));
+  } catch {
+    return [];
+  }
+}
+
+async function codexHistory(home: string, now: number): Promise<Feed> {
+  const db = new NodeSqlite.DatabaseSync(NodePath.join(home, ".codex", "state_5.sqlite"), {
+    readOnly: true,
+  });
+  let records: Record<string, unknown>[];
+  try {
+    records = db
       .prepare(
-        "SELECT session_id, title, updated_at FROM session_docs ORDER BY updated_at DESC LIMIT 20",
+        "SELECT id, title, updated_at, rollout_path FROM threads WHERE archived = 0 ORDER BY updated_at DESC LIMIT 20",
       )
       .all();
-    return {
-      rows: records.flatMap((entry) => {
-        const title = trim(entry.title);
-        if (!entry.session_id || !title) return [];
-        return [
-          {
-            id: `grok-local:${str(entry.session_id)}`,
-            provider: "grok",
-            source: "Grok Build on this Mac",
-            title,
-            detail: "Session history",
-            status: "recent",
-            updatedAt: timestamp(entry.updated_at),
-            url: null,
-          } satisfies MissionControlAgentRow,
-        ];
-      }),
-      detail: "Recent local Grok Build sessions from its search index.",
-    };
   } finally {
     db.close();
   }
+  const sessions = records.flatMap((r) => {
+    const title = trim(r.title);
+    return title && r.id ? [{ id: str(r.id), title, record: r }] : [];
+  });
+  const statuses = await Promise.all(
+    sessions.map(({ record }) => liveTurnStatus("codex", str(record.rollout_path), now)),
+  );
+  return {
+    rows: sessions.map(
+      ({ id, title, record }, index) =>
+        ({
+          id: `codex-local:${id}`,
+          provider: "openai",
+          source: "Codex on this Mac",
+          title,
+          detail: statuses[index] === "running" ? "Turn in progress" : "Session history",
+          status: statuses[index]!,
+          updatedAt: timestamp(record.updated_at),
+          url: null,
+        }) satisfies MissionControlAgentRow,
+    ),
+    detail: "Local sessions. A session is running while its newest turn is open and still writing.",
+  };
+}
+
+async function grokHistory(home: string, now: number): Promise<Feed> {
+  const sessionsDir = NodePath.join(home, ".grok", "sessions");
+  const db = new NodeSqlite.DatabaseSync(NodePath.join(sessionsDir, "session_search.sqlite"), {
+    readOnly: true,
+  });
+  let records: Record<string, unknown>[];
+  try {
+    records = db
+      .prepare(
+        "SELECT session_id, title, updated_at, cwd FROM session_docs ORDER BY updated_at DESC LIMIT 20",
+      )
+      .all();
+  } finally {
+    db.close();
+  }
+  const sessions = records.flatMap((entry) => {
+    const title = trim(entry.title);
+    return entry.session_id && title ? [{ id: str(entry.session_id), title, entry }] : [];
+  });
+  const statuses = await Promise.all(
+    sessions.map(({ id, entry }) =>
+      liveTurnStatus(
+        "grok",
+        NodePath.join(sessionsDir, encodeURIComponent(str(entry.cwd)), id, "events.jsonl"),
+        now,
+      ),
+    ),
+  );
+  return {
+    rows: sessions.map(
+      ({ id, title, entry }, index) =>
+        ({
+          id: `grok-local:${id}`,
+          provider: "grok",
+          source: "Grok Build on this Mac",
+          title,
+          detail:
+            statuses[index] === "running"
+              ? "Turn in progress"
+              : statuses[index] === "needs-input"
+                ? "Waiting on a permission prompt"
+                : "Session history",
+          status: statuses[index]!,
+          updatedAt: timestamp(entry.updated_at),
+          url: null,
+        }) satisfies MissionControlAgentRow,
+    ),
+    detail: "Local Grok Build sessions. A session is running while its newest turn is open.",
+  };
 }
 
 async function cursorHistory(home: string): Promise<Feed> {
@@ -222,6 +359,7 @@ async function cursorHistory(home: string): Promise<Feed> {
   }
   let partial = stores.length === 200;
   const entries: MissionControlAgentRow[] = [];
+  const chats: { id: string; cwd: string; updated: number }[] = [];
   for (const store of stores.toSorted((a, b) => b.updated - a.updated).slice(0, 20)) {
     try {
       const db = new NodeSqlite.DatabaseSync(store.path, { readOnly: true });
@@ -235,6 +373,18 @@ async function cursorHistory(home: string): Promise<Feed> {
         `)
           .get();
         if (!metadata?.id || !metadata.title) continue;
+        const meta = await NodeFSP.readFile(
+          NodePath.join(NodePath.dirname(store.path), "meta.json"),
+          "utf8",
+        ).then(
+          (text) => obj(JSON.parse(text)),
+          () => obj(undefined),
+        );
+        chats.push({
+          id: `cursor-local:${str(metadata.id)}`,
+          cwd: str(meta.cwd),
+          updated: store.updated,
+        });
         entries.push({
           id: `cursor-local:${str(metadata.id)}`,
           provider: "cursor",
@@ -252,10 +402,16 @@ async function cursorHistory(home: string): Promise<Feed> {
       partial = true;
     }
   }
+  const live = cursorLiveChats(chats, await cursorAgentCwds());
   return {
-    rows: entries,
+    rows: entries.map((entry) =>
+      live.has(entry.id)
+        ? { ...entry, status: "running", detail: "cursor-agent is running" }
+        : entry,
+    ),
     partial,
-    detail: "Recent local Cursor sessions. Their live state is available when run through Screddy.",
+    detail:
+      "Local Cursor sessions. A chat is running while a cursor-agent process is working in its folder.",
   };
 }
 
@@ -430,7 +586,7 @@ export async function loadAgentActivity(
     { source: { provider: "openai", label: "Codex Cloud", url: codexUrl }, read: codexCloud(home) },
     {
       source: { provider: "openai", label: "Codex on this Mac", url: null },
-      read: Promise.resolve().then(() => codexHistory(home)),
+      read: Promise.resolve().then(() => codexHistory(home, now)),
     },
     {
       source: { provider: "cursor", label: "Cursor on this Mac", url: null },
@@ -438,7 +594,7 @@ export async function loadAgentActivity(
     },
     {
       source: { provider: "grok", label: "Grok Build on this Mac", url: null },
-      read: Promise.resolve().then(() => grokHistory(home)),
+      read: Promise.resolve().then(() => grokHistory(home, now)),
     },
     {
       source: { provider: "claude", label: "Claude Code · personal", url: null },
