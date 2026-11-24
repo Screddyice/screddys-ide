@@ -9,10 +9,9 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
   SNAPSHOT_MAX_AGE_MS,
   SNAPSHOT_RELATIVE_PATH,
-  TRAY_HANDOFF_MAX_AGE_MS,
   parseTokenMonitorSnapshot,
   tokenMonitorMenuItems,
-  tokenMonitorShowsSrIcon,
+  srLogoClickAction,
 } from "./tokenMonitorSection.ts";
 
 const NOW = 1_800_000_000_000;
@@ -180,24 +179,14 @@ describe("tokenMonitorMenuItems", () => {
   });
 });
 
-describe("tokenMonitorShowsSrIcon", () => {
-  const state = (overrides: Record<string, unknown> = {}, installed = true) => ({
-    installed,
-    snapshot: parseTokenMonitorSnapshot(snapshot(overrides)),
+describe("srLogoClickAction", () => {
+  it("opens Token Monitor's panel when the SR logo is clicked and Token Monitor is installed", () => {
+    expect(srLogoClickAction(true, "left")).toBe("open-token-monitor");
   });
 
-  it("hands the SR icon to Token Monitor while it draws the speedometer there", () => {
-    expect(tokenMonitorShowsSrIcon(state(), NOW)).toBe(true);
-  });
-
-  it("keeps Screddy's own icon otherwise", () => {
-    expect(tokenMonitorShowsSrIcon(state({ trayIcon: false }), NOW)).toBe(false);
-    expect(tokenMonitorShowsSrIcon(state({}, false), NOW)).toBe(false);
-    expect(tokenMonitorShowsSrIcon({ installed: true, snapshot: null }, NOW)).toBe(false);
-    // Token Monitor quit or stopped sharing: Screddy's icon comes back within minutes.
-    expect(
-      tokenMonitorShowsSrIcon(state({ writtenAt: NOW - TRAY_HANDOFF_MAX_AGE_MS - 1 }), NOW),
-    ).toBe(false);
-    expect(tokenMonitorShowsSrIcon(state({ writtenAt: NOW + 60_000 }), NOW)).toBe(false);
+  it("opens Screddy's menu on a right-click, or on any click without Token Monitor", () => {
+    expect(srLogoClickAction(true, "right")).toBe("menu");
+    expect(srLogoClickAction(false, "left")).toBe("menu");
+    expect(srLogoClickAction(false, "right")).toBe("menu");
   });
 });

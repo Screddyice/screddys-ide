@@ -26,8 +26,8 @@ import {
   SNAPSHOT_RELATIVE_PATH,
   TOKEN_MONITOR_BUNDLE_ID,
   parseTokenMonitorSnapshot,
+  srLogoClickAction,
   tokenMonitorMenuItems,
-  tokenMonitorShowsSrIcon,
   type TokenMonitorMenuState,
 } from "./tokenMonitorSection.ts";
 
@@ -137,42 +137,42 @@ export function usageMenuTemplate(
 function startTokenUsageTray(iconPath: string, actions: UsageMenuActions) {
   const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
   if (icon.isEmpty()) return null;
-  let tray: Tray | null = null;
+  const tray = new Tray(icon);
   let usage = EMPTY_MENU;
   let monitor: MenuItemConstructorOptions[] = [];
+  let tokenMonitorInstalled = false;
+  let menu = Menu.buildFromTemplate(usageMenuTemplate(usage, actions, monitor));
   let previous: string | undefined;
   function render() {
-    if (tray === null) return;
     const current = JSON.stringify([usage, monitor.map((item) => item.label ?? item.type)]);
     if (current === previous) return;
-    tray.setContextMenu(Menu.buildFromTemplate(usageMenuTemplate(usage, actions, monitor)));
+    menu = Menu.buildFromTemplate(usageMenuTemplate(usage, actions, monitor));
     // The menu bar shows the logo alone; the numbers live in the tooltip and the menu.
     tray.setToolTip(usageTrayTooltip(usage));
     previous = current;
   }
-  function show() {
-    tray = new Tray(icon);
-    previous = undefined;
-    render();
-  }
-  show();
+  // No setContextMenu: it would take over the left click that opens Token Monitor's panel.
+  const onClick = (button: "left" | "right") => () => {
+    if (srLogoClickAction(tokenMonitorInstalled, button) === "open-token-monitor") {
+      openTokenMonitor();
+    } else {
+      tray.popUpContextMenu(menu);
+    }
+  };
+  tray.on("click", onClick("left"));
+  tray.on("right-click", onClick("right"));
+  render();
   return {
     update(state: DesktopTokenUsageMenuState) {
       usage = state;
       render();
     },
     setTokenMonitor(state: TokenMonitorMenuState, now: number) {
+      tokenMonitorInstalled = state.installed;
       monitor = tokenMonitorMenuItems(state, now, openTokenMonitor);
-      // Token Monitor's own icon is the SR logo and opens its panel: keep just that one.
-      if (tokenMonitorShowsSrIcon(state, now)) {
-        tray?.destroy();
-        tray = null;
-      } else if (tray === null) {
-        show();
-      }
       render();
     },
-    destroy: () => tray?.destroy(),
+    destroy: () => tray.destroy(),
   };
 }
 
