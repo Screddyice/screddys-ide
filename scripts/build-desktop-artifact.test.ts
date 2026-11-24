@@ -56,6 +56,7 @@ import {
   WindowsDesktopBuildPrerequisitesMissingError,
   WindowsPackagedPayloadValidationError,
   stageCursorSdkPlatformPackages,
+  stageTokenMonitorPlugin,
   WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
   WINDOWS_SERVER_ASAR_IGNORE_GLOBS,
   WINDOWS_SERVER_ASAR_RESOURCE,
@@ -606,6 +607,48 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         }
       }
     }),
+  );
+
+  it.effect("packages the Token Speedometer plug-in on every platform", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const repoRoot = path.join(import.meta.dirname, "..");
+      for (const platform of ["mac", "linux", "win"] as const) {
+        const target = platform === "mac" ? "dmg" : platform === "linux" ? "AppImage" : "nsis";
+        const config = yield* createBuildConfig(
+          platform,
+          target,
+          "0.1.0",
+          false,
+          false,
+          undefined,
+          undefined,
+        );
+        const entry = (config.extraResources as Array<{ from: string; to: string }>).find(
+          (resource) => resource.to === "token-monitor-speedometer",
+        );
+        assert.strictEqual(entry?.from, "integrations/token-monitor-speedometer", platform);
+      }
+      // electron-builder reads extraResources from the staged app, not the repo.
+      const stageAppDir = yield* fs.makeTempDirectoryScoped();
+      yield* stageTokenMonitorPlugin({ repoRoot, stageAppDir });
+      const source = path.join(repoRoot, "integrations/token-monitor-speedometer");
+      for (const name of yield* fs.readDirectory(source)) {
+        assert.deepStrictEqual(
+          yield* fs.readFile(
+            path.join(stageAppDir, "integrations/token-monitor-speedometer", name),
+          ),
+          yield* fs.readFile(path.join(source, name)),
+          name,
+        );
+      }
+      // It ships as a resource only, never inside app.asar.
+      assert.includeMembers(
+        [...DESKTOP_FILE_EXCLUSIONS],
+        ["!integrations/token-monitor-speedometer", "!integrations/token-monitor-speedometer/**/*"],
+      );
+    }).pipe(Effect.scoped),
   );
 
   // pnpm writes "set this to true or false" placeholders into allowBuilds when a

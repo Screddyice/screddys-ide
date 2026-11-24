@@ -15,6 +15,7 @@ import * as DesktopAppActivation from "./DesktopAppActivation.ts";
 import * as DesktopAppIdentity from "./DesktopAppIdentity.ts";
 import * as DesktopClerk from "./DesktopClerk.ts";
 import * as DesktopComputerUseIndicator from "./DesktopComputerUseIndicator.ts";
+import * as DesktopTokenMonitorPlugin from "./DesktopTokenMonitorPlugin.ts";
 import * as DesktopApplicationMenu from "../window/DesktopApplicationMenu.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import * as PreviewPasskeys from "../preview/Passkeys.ts";
@@ -282,6 +283,8 @@ const startup = Effect.gen(function* () {
   );
   yield* logStartupInfo("app ready");
   yield* DesktopComputerUseIndicator.install;
+  // Copies the bundled Token Speedometer into Token Monitor when it is installed; never blocks startup.
+  yield* DesktopTokenMonitorPlugin.sync.pipe(Effect.forkScoped);
   if (environment.platform === "linux") {
     const selectedBackend = yield* safeStorage.selectedStorageBackend;
     yield* logStartupInfo("safe storage ready", {

@@ -1002,6 +1002,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
   "!apps/desktop/prod-resources/wsl-runtime.tar.gz.sha256",
   "!apps/desktop/gnome-extension",
   "!apps/desktop/gnome-extension/**/*",
+  "!integrations/token-monitor-speedometer",
+  "!integrations/token-monitor-speedometer/**/*",
 ] as const;
 // Windows terminal helpers cannot run on macOS and slow signing and notarization.
 export const MAC_FILE_EXCLUSIONS = [
@@ -1098,6 +1100,11 @@ export const DESKTOP_EXTRA_RESOURCES = [
   {
     from: "apps/desktop/prod-resources/resource-monitor",
     to: "resource-monitor",
+  },
+  // Staged by stageTokenMonitorPlugin; copied into Token Monitor at startup by DesktopTokenMonitorPlugin.
+  {
+    from: "integrations/token-monitor-speedometer",
+    to: "token-monitor-speedometer",
   },
 ] as const;
 export const LINUX_CAPTURE_EXTRA_RESOURCES = [
@@ -2345,6 +2352,20 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
       path.join(destination, "protocols"),
     );
   }
+});
+
+const TOKEN_MONITOR_PLUGIN_SOURCE = "integrations/token-monitor-speedometer";
+
+/** Puts the plug-in where its extraResources entry looks for it: the staged app, not the repo. */
+export const stageTokenMonitorPlugin = Effect.fn("stageTokenMonitorPlugin")(function* (input: {
+  readonly repoRoot: string;
+  readonly stageAppDir: string;
+}) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const target = path.join(input.stageAppDir, TOKEN_MONITOR_PLUGIN_SOURCE);
+  yield* fs.makeDirectory(path.dirname(target), { recursive: true });
+  yield* fs.copy(path.join(input.repoRoot, TOKEN_MONITOR_PLUGIN_SOURCE), target);
 });
 
 export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
@@ -3775,6 +3796,7 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
   if (options.platform !== "win") {
     yield* fs.copy(distDirs.serverDist, path.join(stageAppDir, "apps/server/dist"));
   }
+  yield* stageTokenMonitorPlugin({ repoRoot, stageAppDir });
   yield* stageResourceMonitor({
     repoRoot,
     stageResourcesDir,

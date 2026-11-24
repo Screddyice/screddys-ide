@@ -105,6 +105,12 @@ The sun or moon button in the sidebar footer switches between light and dark mod
 
 The Token Speedometer's scale numbers sit directly on the bar, with no box behind them. A soft halo in the track colour keeps them readable over the tick marks, and a number the green fill has passed turns dark.
 
+## Token Speedometer in Token Monitor
+
+The desktop app ships the Token Speedometer plug-in for Token Monitor, a separate open-source app. Each time Screddy starts, it copies the plug-in into Token Monitor's plug-in folder if Token Monitor is installed and the copy there is missing, older or changed. Token Monitor only runs a plug-in you have approved, so after a new copy lands, open Token Monitor › Plugins and approve the speedometer. Screddy leaves the copy alone if Token Monitor installed it from a package, if that copy is a newer version, or while Token Monitor is changing plug-ins. It does not install Token Monitor itself.
+
+If you installed the speedometer from a `.tmplugin` file, update it the same way: Token Monitor › Plugins › Install from file. Token Monitor refuses an update that keeps the same version, so any change to the files in `integrations/token-monitor-speedometer` needs a new version in its `manifest.json`. `DesktopTokenMonitorPlugin.test.ts` fails until you bump it and record the new hash.
+
 ## Upstream T3 Code documentation
 
 T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
