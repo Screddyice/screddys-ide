@@ -15,5 +15,8 @@
       "surfaces": ["home", "tray"],
       "defaultSurfaces": ["home", "tray"]
     }
-  ]
+  ],
+  "background": true,
+  "backgroundDescription": "Shares today's tokens, cost and plan limits with the Screddy menu bar every 30 seconds.",
+  "defaults": { "background": true }
 }

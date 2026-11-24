@@ -157,7 +157,7 @@ describe("tokenMonitorMenuItems", () => {
       expect(labels(tokenMonitorMenuItems(state, NOW, open))).toEqual([
         "---",
         "Token Monitor",
-        "Turn on the Token Speedometer in Token Monitor to see its numbers here",
+        "No recent numbers from Token Monitor",
         "Open Token Monitor…",
       ]);
     }

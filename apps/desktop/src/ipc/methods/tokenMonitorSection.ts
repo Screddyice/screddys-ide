@@ -61,7 +61,7 @@ export function tokenMonitorMenuItems(
       ? snapshot
       : null;
   if (fresh === null) {
-    items.push(info("Turn on the Token Speedometer in Token Monitor to see its numbers here"));
+    items.push(info("No recent numbers from Token Monitor"));
   } else {
     if (fresh.today !== null) {
       const cost =
