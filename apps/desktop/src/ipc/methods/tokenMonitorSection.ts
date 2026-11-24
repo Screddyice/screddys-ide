@@ -12,6 +12,8 @@ export const TOKEN_MONITOR_BUNDLE_ID = "com.javis.tokenmonitor";
 export const SNAPSHOT_RELATIVE_PATH = ["token-monitor", "snapshot.json"] as const;
 /** Older numbers are not shown as current; the plug-in rewrites the file every 30 seconds. */
 export const SNAPSHOT_MAX_AGE_MS = 10 * 60_000;
+/** How long Token Monitor may go quiet before Screddy puts its own SR icon back. */
+export const TRAY_HANDOFF_MAX_AGE_MS = 2 * 60_000;
 const MAX_LIMIT_ROWS = 8;
 
 const Finite = Schema.Number.check(Schema.isFinite());
@@ -19,6 +21,8 @@ const Finite = Schema.Number.check(Schema.isFinite());
 const TokenMonitorSnapshot = Schema.Struct({
   version: Schema.Literal(1),
   writtenAt: Finite,
+  /** Token Monitor is drawing the speedometer's SR mark as its menu-bar icon. */
+  trayIcon: Schema.Boolean,
   today: Schema.NullOr(
     Schema.Struct({
       totalTokens: Finite,
@@ -46,6 +50,20 @@ export interface TokenMonitorMenuState {
 }
 
 const info = (label: string): MenuItemConstructorOptions => ({ label, enabled: false });
+
+/**
+ * One SR logo in the menu bar: while Token Monitor draws the speedometer as its icon,
+ * that icon opens Token Monitor's panel and Screddy leaves its own out.
+ */
+export const tokenMonitorShowsSrIcon = (
+  { installed, snapshot }: TokenMonitorMenuState,
+  now: number,
+) =>
+  installed &&
+  snapshot !== null &&
+  snapshot.trayIcon &&
+  snapshot.writtenAt <= now &&
+  now - snapshot.writtenAt <= TRAY_HANDOFF_MAX_AGE_MS;
 
 export function tokenMonitorMenuItems(
   { installed, snapshot }: TokenMonitorMenuState,

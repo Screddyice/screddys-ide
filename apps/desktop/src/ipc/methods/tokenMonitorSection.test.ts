@@ -9,8 +9,10 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import {
   SNAPSHOT_MAX_AGE_MS,
   SNAPSHOT_RELATIVE_PATH,
+  TRAY_HANDOFF_MAX_AGE_MS,
   parseTokenMonitorSnapshot,
   tokenMonitorMenuItems,
+  tokenMonitorShowsSrIcon,
 } from "./tokenMonitorSection.ts";
 
 const NOW = 1_800_000_000_000;
@@ -19,7 +21,12 @@ describe("the Token Speedometer plug-in", () => {
   it("writes a snapshot this menu can read", async () => {
     const plugin = NodeModule.createRequire(import.meta.url)(
       "../../../../../integrations/token-monitor-speedometer/activity.cjs",
-    ) as { activate: (context: object) => { dispose: () => void } };
+    ) as {
+      activate: (context: object) => {
+        call: (method: string) => Promise<unknown>;
+        dispose: () => void;
+      };
+    };
     const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "screddy-home-"));
     const previous = process.env.T3CODE_HOME;
     process.env.T3CODE_HOME = home;
@@ -38,11 +45,18 @@ describe("the Token Speedometer plug-in", () => {
     try {
       const file = NodePath.join(home, "userdata", ...SNAPSHOT_RELATIVE_PATH);
       await vi.waitFor(() => expect(NodeFS.existsSync(file)).toBe(true));
-      const parsed = parseTokenMonitorSnapshot(NodeFS.readFileSync(file, "utf8"));
+      const read = () => parseTokenMonitorSnapshot(NodeFS.readFileSync(file, "utf8"));
+      await vi.waitFor(() => expect(read()).not.toBeNull());
+      const parsed = read();
       expect(parsed?.today).toEqual({ totalTokens: 1_234, knownUsd: 1.5, costComplete: false });
       expect(parsed?.limits).toEqual([
         { label: "Claude", windows: [{ label: "Weekly", remainingPercent: 63 }] },
       ]);
+      expect(parsed?.trayIcon).toBe(false);
+
+      // Token Monitor drawing the speedometer as its menu-bar icon is shared at once.
+      await instance.call("trayShown");
+      await vi.waitFor(() => expect(read()?.trayIcon).toBe(true));
     } finally {
       instance.dispose();
       if (previous === undefined) delete process.env.T3CODE_HOME;
@@ -56,6 +70,7 @@ const snapshot = (overrides: Record<string, unknown> = {}) =>
   JSON.stringify({
     version: 1,
     writtenAt: NOW - 30_000,
+    trayIcon: true,
     today: { totalTokens: 174_736_292, knownUsd: 48.73, costComplete: true },
     limits: [
       { label: "Claude", windows: [{ label: "Weekly", remainingPercent: 63.4 }] },
@@ -78,6 +93,7 @@ describe("parseTokenMonitorSnapshot", () => {
     expect(parseTokenMonitorSnapshot("not json")).toBeNull();
     expect(parseTokenMonitorSnapshot(snapshot({ version: 2 }))).toBeNull();
     expect(parseTokenMonitorSnapshot(snapshot({ writtenAt: "yesterday" }))).toBeNull();
+    expect(parseTokenMonitorSnapshot(snapshot({ trayIcon: "yes" }))).toBeNull();
     expect(
       parseTokenMonitorSnapshot(
         snapshot({ limits: [{ label: "Claude", windows: [{ label: "Weekly" }] }] }),
@@ -161,5 +177,27 @@ describe("tokenMonitorMenuItems", () => {
         "Open Token Monitor…",
       ]);
     }
+  });
+});
+
+describe("tokenMonitorShowsSrIcon", () => {
+  const state = (overrides: Record<string, unknown> = {}, installed = true) => ({
+    installed,
+    snapshot: parseTokenMonitorSnapshot(snapshot(overrides)),
+  });
+
+  it("hands the SR icon to Token Monitor while it draws the speedometer there", () => {
+    expect(tokenMonitorShowsSrIcon(state(), NOW)).toBe(true);
+  });
+
+  it("keeps Screddy's own icon otherwise", () => {
+    expect(tokenMonitorShowsSrIcon(state({ trayIcon: false }), NOW)).toBe(false);
+    expect(tokenMonitorShowsSrIcon(state({}, false), NOW)).toBe(false);
+    expect(tokenMonitorShowsSrIcon({ installed: true, snapshot: null }, NOW)).toBe(false);
+    // Token Monitor quit or stopped sharing: Screddy's icon comes back within minutes.
+    expect(
+      tokenMonitorShowsSrIcon(state({ writtenAt: NOW - TRAY_HANDOFF_MAX_AGE_MS - 1 }), NOW),
+    ).toBe(false);
+    expect(tokenMonitorShowsSrIcon(state({ writtenAt: NOW + 60_000 }), NOW)).toBe(false);
   });
 });

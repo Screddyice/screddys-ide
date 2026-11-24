@@ -27,6 +27,7 @@ import {
   TOKEN_MONITOR_BUNDLE_ID,
   parseTokenMonitorSnapshot,
   tokenMonitorMenuItems,
+  tokenMonitorShowsSrIcon,
   type TokenMonitorMenuState,
 } from "./tokenMonitorSection.ts";
 
@@ -136,12 +137,12 @@ export function usageMenuTemplate(
 function startTokenUsageTray(iconPath: string, actions: UsageMenuActions) {
   const icon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
   if (icon.isEmpty()) return null;
-  const tray = new Tray(icon);
-  tray.setToolTip("Screddy Token Usage");
+  let tray: Tray | null = null;
   let usage = EMPTY_MENU;
   let monitor: MenuItemConstructorOptions[] = [];
   let previous: string | undefined;
   function render() {
+    if (tray === null) return;
     const current = JSON.stringify([usage, monitor.map((item) => item.label ?? item.type)]);
     if (current === previous) return;
     tray.setContextMenu(Menu.buildFromTemplate(usageMenuTemplate(usage, actions, monitor)));
@@ -149,7 +150,12 @@ function startTokenUsageTray(iconPath: string, actions: UsageMenuActions) {
     tray.setToolTip(usageTrayTooltip(usage));
     previous = current;
   }
-  render();
+  function show() {
+    tray = new Tray(icon);
+    previous = undefined;
+    render();
+  }
+  show();
   return {
     update(state: DesktopTokenUsageMenuState) {
       usage = state;
@@ -157,9 +163,16 @@ function startTokenUsageTray(iconPath: string, actions: UsageMenuActions) {
     },
     setTokenMonitor(state: TokenMonitorMenuState, now: number) {
       monitor = tokenMonitorMenuItems(state, now, openTokenMonitor);
+      // Token Monitor's own icon is the SR logo and opens its panel: keep just that one.
+      if (tokenMonitorShowsSrIcon(state, now)) {
+        tray?.destroy();
+        tray = null;
+      } else if (tray === null) {
+        show();
+      }
       render();
     },
-    destroy: () => tray.destroy(),
+    destroy: () => tray?.destroy(),
   };
 }
 

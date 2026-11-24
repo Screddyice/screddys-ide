@@ -71,7 +71,7 @@ function limitsFrom(result) {
   });
 }
 
-async function writeSnapshot(host, directory) {
+async function writeSnapshot(host, directory, trayIcon) {
   const [usage, limits] = await Promise.all(
     ["usage", "limits"].map((resource) =>
       host.call("data.query", { resource, period: "today" }).catch(() => null),
@@ -80,6 +80,8 @@ async function writeSnapshot(host, directory) {
   const snapshot = {
     version: 1,
     writtenAt: Date.now(),
+    // While true, Screddy leaves its own SR icon out so this one opens Token Monitor.
+    trayIcon,
     today: todayFrom(usage),
     limits: limitsFrom(limits),
   };
@@ -98,9 +100,10 @@ exports.activate = ({ host, log } = {}) => {
       : join(homedir(), ".screddys-ide");
   const directory = join(home, "userdata", "computer-use-activity");
   const snapshotDirectory = join(home, "userdata", "token-monitor");
+  let trayIcon = false;
   const share = () =>
     host?.call
-      ? writeSnapshot(host, snapshotDirectory).catch((error) =>
+      ? writeSnapshot(host, snapshotDirectory, trayIcon).catch((error) =>
           log?.(`Could not share Token Monitor numbers with Screddy: ${error?.message ?? error}`),
         )
       : undefined;
@@ -113,6 +116,13 @@ exports.activate = ({ host, log } = {}) => {
     async call(method) {
       if (method === "openWebsite") {
         await runFile("/usr/bin/open", ["https://shawn-reddy.com/"], { timeout: 10000 });
+        return true;
+      }
+      if (method === "trayShown") {
+        if (!trayIcon) {
+          trayIcon = true;
+          await share();
+        }
         return true;
       }
       if (method !== "activeApplications") throw new Error("Unknown operation");

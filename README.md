@@ -113,6 +113,8 @@ If you installed the speedometer from a `.tmplugin` file, update it the same way
 
 When Token Monitor is installed, the menu under the SR logo in the macOS menu bar has a Token Monitor section: today's tokens and cost, how much of each plan limit is left (for example "Claude Weekly · 63% left"), and Open Token Monitor…. While the speedometer runs in Token Monitor, it writes these numbers to `~/.screddys-ide/userdata/token-monitor/snapshot.json` every 30 seconds, and Screddy reads that file. The plug-in runs in the background so the numbers stay current; Token Monitor asks you to allow that when it installs or updates the plug-in. Numbers more than 10 minutes old are not shown, and the menu says so instead.
 
+The menu bar keeps one SR logo. While Token Monitor shows the speedometer as its menu-bar icon (its own SR mark), Screddy leaves its icon out, so clicking the SR logo opens Token Monitor's panel with the speedometer and limits. If Token Monitor quits or stops sharing for 2 minutes, Screddy's SR icon and its menu come back. Token Monitor draws plug-in menu-bar icons in one color to match the menu bar, so that logo is not green.
+
 ## Upstream T3 Code documentation
 
 T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
