@@ -16,6 +16,8 @@ Tasks routed to Grok Bot go to one main bot. Set `grokBot` to `{ "botName": "<na
 
 Switch between **Top priorities** and **Agent activity** with the view dropdown at the top of Mission Control. Changing the view scrolls the page back to the top.
 
+The **Sources** section under the list appears only when a connected source is unavailable, and lists just those sources with the reason. Sources that are connected or partly covered are not listed.
+
 To connect SRCOS, set `srcosTenant` and the absolute path `srcosCredentialFile`. Store the HTTPS `origin` and access `token` together in that separate JSON file with owner-only permissions (`chmod 600`).
 
 Mission Control routes and prioritizes tasks locally by default. Enter your own OpenRouter API key in the optional JEV onboarding step, or set it up later under **Settings → General → Mission Control**. Screddy verifies JEV and stores the key in encrypted desktop storage. An independently configured `jevCommand` remains available when a saved OpenRouter key is absent. To show Cursor Cloud activity in Screddy, set `cursorCloud` to `true` and supply `CURSOR_API_KEY` to the desktop process through its environment.
