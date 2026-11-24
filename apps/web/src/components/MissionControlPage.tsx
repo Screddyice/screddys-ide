@@ -45,6 +45,7 @@ import {
 } from "./MissionControl.logic";
 import { MissionControlAgentActivity } from "./MissionControlAgentActivity.tsx";
 import { MissionControlPriorities } from "./MissionControlPriorities.tsx";
+import { MissionControlTokenBar } from "./MissionControlTokenBar.tsx";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { sortScopedProjectsForSidebar } from "./Sidebar.logic";
 import { WorkspacePageHeader } from "./WorkspacePageHeader";
@@ -192,7 +193,8 @@ export function MissionControlPage() {
       {...workspaceAreaProps("home", 1, "Mission Control")}
       className="h-dvh min-h-0 overflow-hidden overscroll-y-none"
     >
-      <WorkspacePageHeader electron className="justify-end">
+      <WorkspacePageHeader electron className="justify-between">
+        <MissionControlTokenBar />
         <SplitThreadButton
           layout={{
             paneCount: 1,

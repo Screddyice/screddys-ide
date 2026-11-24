@@ -2,9 +2,11 @@ import type { DesktopBridge } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
+import { useEnvironmentProviders } from "../../state/environments";
 import { useUsage } from "../../state/usage";
 import {
   buildDesktopUsageSnapshot,
+  usagePlans,
   currentUsageRange as currentRange,
 } from "./desktopUsageSnapshot";
 
@@ -34,7 +36,13 @@ function TokenUsagePublisher({
 }) {
   const [range, setRange] = useState(currentRange);
   const { environments, isPending, refresh } = useUsage(range.month);
-  const snapshot = buildDesktopUsageSnapshot(environments, range.month.untilDay, range.weekStart);
+  const plans = usagePlans(useEnvironmentProviders());
+  const snapshot = buildDesktopUsageSnapshot(
+    environments,
+    range.month.untilDay,
+    range.weekStart,
+    plans,
+  );
   const busy = useRef(false);
   const navigate = useNavigate();
   const requestRefresh = useEffectEvent(() => {

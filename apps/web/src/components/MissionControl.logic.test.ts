@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { missionControlThreadView, summarizeRunningAgents } from "./MissionControl.logic";
+import {
+  missionControlThreadView,
+  summarizeRunningAgents,
+  tokensPerMinute,
+} from "./MissionControl.logic";
 
 describe("summarizeRunningAgents", () => {
   it("counts only running rows and pairs each family with today's tokens", () => {
@@ -41,5 +45,26 @@ describe("missionControlThreadView", () => {
     ["offline", null],
   ] as const)("puts a %s thread under %s", (status, view) => {
     expect(missionControlThreadView(status)).toBe(view);
+  });
+});
+
+describe("tokensPerMinute", () => {
+  const at = (minutes: number) => Date.parse("2026-11-24T05:00:00Z") + minutes * 60_000;
+
+  it("averages the tokens added between two usage reads", () => {
+    expect(tokensPerMinute({ tokens: 1_000, atMs: at(0) }, { tokens: 7_000, atMs: at(2) })).toBe(
+      3_000,
+    );
+    expect(tokensPerMinute({ tokens: 1_000, atMs: at(0) }, { tokens: 1_000, atMs: at(5) })).toBe(0);
+  });
+
+  it("has no rate without an earlier read, or across midnight when today's total resets", () => {
+    expect(tokensPerMinute(null, { tokens: 7_000, atMs: at(2) })).toBeNull();
+    expect(
+      tokensPerMinute({ tokens: 9_000, atMs: at(0) }, { tokens: 100, atMs: at(2) }),
+    ).toBeNull();
+    expect(
+      tokensPerMinute({ tokens: 1_000, atMs: at(2) }, { tokens: 2_000, atMs: at(2) }),
+    ).toBeNull();
   });
 });

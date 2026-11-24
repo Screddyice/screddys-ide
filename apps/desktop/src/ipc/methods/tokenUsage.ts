@@ -52,6 +52,13 @@ function usageMenuTemplate(
   if (summary === null) {
     template.push(info(loading ? "Checking usage…" : "Usage unavailable"));
   } else {
+    if (summary.topModel) {
+      template.push(
+        info(
+          `Most used · ${summary.topModel.label} · ${formatTokens(summary.topModel.totalTokens)} tokens in 30 days`,
+        ),
+      );
+    }
     template.push(
       periodMenu("Today", summary.today),
       periodMenu("Last 7 days", summary.week),
@@ -64,7 +71,7 @@ function usageMenuTemplate(
       template.push({
         label: "Providers and top models · 30 days",
         submenu: summary.providers.map((provider) => ({
-          label: `${provider.label} · ${formatTokens(provider.totalTokens)} tokens`,
+          label: `${provider.label}${provider.plan ? ` · ${provider.plan}` : ""} · ${formatTokens(provider.totalTokens)} tokens`,
           ...(provider.models.length > 0
             ? {
                 submenu: provider.models.map((model) =>

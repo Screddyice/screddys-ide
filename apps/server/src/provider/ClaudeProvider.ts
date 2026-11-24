@@ -166,9 +166,30 @@ function formatClaudeSubscriptionAuthLabel(subscriptionType: string): string {
   return `Claude ${subscriptionLabel} Subscription`;
 }
 
+/** `claude auth status` prints JSON; the SDK's account info has no plan tier. */
+export function parseClaudePlanTier(stdout: string): string | undefined {
+  try {
+    const tier = (JSON.parse(stdout) as { readonly planTier?: unknown }).planTier;
+    return typeof tier === "string" && tier.trim() ? tier.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Both Max tiers report the subscription type "max"; only the plan tier tells 5x from 20x. */
+export function claudePlanAuthLabel(
+  subscriptionType: string,
+  planTier: string | undefined,
+): string {
+  const isMax = claudeSubscriptionLabel(subscriptionType) === "Max";
+  const is20x = planTier?.toLowerCase().replace(/[\s_-]+/g, "") === "max20x";
+  return formatClaudeSubscriptionAuthLabel(isMax && is20x ? "max20" : subscriptionType);
+}
+
 function claudeAuthMetadata(input: {
   readonly subscriptionType: string | undefined;
   readonly authMethod: string | undefined;
+  readonly planTier?: string | undefined;
 }): { readonly type: string; readonly label: string } | undefined {
   if (normalizeClaudeAuthMethod(input.authMethod) === "apiKey") {
     return {
@@ -180,7 +201,7 @@ function claudeAuthMetadata(input: {
   if (input.subscriptionType) {
     return {
       type: input.subscriptionType,
-      label: formatClaudeSubscriptionAuthLabel(input.subscriptionType),
+      label: claudePlanAuthLabel(input.subscriptionType, input.planTier),
     };
   }
 
@@ -701,6 +722,21 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
+  const planTier = capabilities.subscriptionType
+    ? yield* runClaudeCommand(
+        claudeSettings,
+        ["auth", "status"],
+        providerProbeEnvironment(resolvedEnvironment),
+        cwd,
+      ).pipe(
+        Effect.timeoutOption(CLAUDE_VERSION_CHECK_TIMEOUT_MS),
+        Effect.map(
+          Option.flatMap(({ stdout }) => Option.fromUndefinedOr(parseClaudePlanTier(stdout))),
+        ),
+        Effect.map(Option.getOrUndefined),
+        Effect.orElseSucceed(() => undefined),
+      )
+    : undefined;
   // A proxy's ANTHROPIC_AUTH_TOKEN reads as an API key; the endpoint is what the token is for.
   const authMetadata =
     apiProviderAuthMetadata(capabilities.apiProvider) ??
@@ -708,6 +744,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     claudeAuthMetadata({
       subscriptionType: capabilities.subscriptionType,
       authMethod: capabilities.tokenSource,
+      planTier,
     });
   const usageCheckedAt = capabilities.usageCheckedAt ?? checkedAt;
   const usageLimits = !capabilities.usage

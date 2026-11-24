@@ -2,6 +2,7 @@ import {
   USAGE_CONTRACT_VERSION,
   type DesktopTokenUsagePeriod,
   type DesktopTokenUsageSummary,
+  type UsageProviderKind,
 } from "@t3tools/contracts";
 import { makeWindow } from "@t3tools/shared/usageFormat";
 import { isCompatibleUsageContractVersion, type MergedUsage } from "@t3tools/shared/usageMerge";
@@ -27,10 +28,40 @@ function period(usage: MergedUsage): DesktopTokenUsagePeriod {
   };
 }
 
+const modelLabel = (model: string) => model.replace(/\p{C}/gu, " ").slice(0, 120);
+
+/** "Claude Ultra Subscription" reads as "Ultra" beside the provider's own name. */
+function planName(authLabel: string): string {
+  const name = authLabel
+    .replace(/\s+subscription$/i, "")
+    .replace(/^(claude|chatgpt|codex|cursor|grok|supergrok)\s+/i, "")
+    .trim();
+  return (name || authLabel).slice(0, 120);
+}
+
+/** Each usage provider's signed-in plan label, from the first environment that reports one. */
+export function usagePlans(
+  providersByEnvironment: ReadonlyMap<
+    unknown,
+    readonly { readonly driver: string; readonly auth: { readonly label?: string | undefined } }[]
+  >,
+): ReadonlyMap<UsageProviderKind, string> {
+  const plans = new Map<UsageProviderKind, string>();
+  for (const [kind, { driverKind }] of Object.entries(PROVIDER_PRESENTATION)) {
+    for (const providers of providersByEnvironment.values()) {
+      const label = providers.find((provider) => provider.driver === driverKind)?.auth.label;
+      if (label && !plans.has(kind as UsageProviderKind))
+        plans.set(kind as UsageProviderKind, label);
+    }
+  }
+  return plans;
+}
+
 export function buildDesktopUsageSnapshot(
   environments: readonly EnvironmentUsageStatus[],
   today: string,
   firstDayOfWeek: string,
+  plans: ReadonlyMap<UsageProviderKind, string> = new Map(),
 ): DesktopTokenUsageSummary | null {
   const month = mergeAnsweredUsage(environments);
   const hasReport = environments.some(
@@ -41,6 +72,7 @@ export function buildDesktopUsageSnapshot(
   if (!hasReport) return null;
   const dailyUsage = mergeAnsweredUsage(environments, (bucket) => bucket.day === today);
   const week = mergeAnsweredUsage(environments, (bucket) => bucket.day >= firstDayOfWeek);
+  const topModel = month.models.toSorted((a, b) => b.totalTokens - a.totalTokens)[0];
   return {
     today: period(dailyUsage),
     week: period(week),
@@ -60,17 +92,23 @@ export function buildDesktopUsageSnapshot(
           ),
       ),
     hasUnpricedUsage: month.costQuality.unpricedShare > 0,
-    providers: month.providers.map((provider) => ({
-      label: PROVIDER_PRESENTATION[provider.provider].label,
-      totalTokens: provider.totalTokens,
-      models: month.models
-        .filter((model) => model.provider === provider.provider)
-        .toSorted((a, b) => b.totalTokens - a.totalTokens)
-        .slice(0, 5)
-        .map((model) => ({
-          label: model.model.replace(/\p{C}/gu, " ").slice(0, 120),
-          totalTokens: model.totalTokens,
-        })),
-    })),
+    providers: month.providers
+      .toSorted((a, b) => b.totalTokens - a.totalTokens)
+      .map((provider) => {
+        const plan = plans.get(provider.provider);
+        return {
+          label: PROVIDER_PRESENTATION[provider.provider].label,
+          ...(plan ? { plan: planName(plan) } : {}),
+          totalTokens: provider.totalTokens,
+          models: month.models
+            .filter((model) => model.provider === provider.provider)
+            .toSorted((a, b) => b.totalTokens - a.totalTokens)
+            .slice(0, 5)
+            .map((model) => ({ label: modelLabel(model.model), totalTokens: model.totalTokens })),
+        };
+      }),
+    ...(topModel
+      ? { topModel: { label: modelLabel(topModel.model), totalTokens: topModel.totalTokens } }
+      : {}),
   };
 }
