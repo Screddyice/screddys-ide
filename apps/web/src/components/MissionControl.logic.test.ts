@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { summarizeRunningAgents } from "./MissionControl.logic";
+import { missionControlThreadView, summarizeRunningAgents } from "./MissionControl.logic";
 
 describe("summarizeRunningAgents", () => {
   it("counts only running rows and pairs each family with today's tokens", () => {
@@ -26,5 +26,20 @@ describe("summarizeRunningAgents", () => {
     expect(summarizeRunningAgents([{ provider: "cursor", status: "running" }], null)).toEqual([
       { provider: "cursor", running: 1, todayTokens: null },
     ]);
+  });
+});
+
+describe("missionControlThreadView", () => {
+  it.each([
+    ["working", "running"],
+    ["preparing", "running"],
+    ["ready", "attention"],
+    ["approval", "attention"],
+    ["failed", "attention"],
+    ["settled", null],
+    ["waiting", null],
+    ["offline", null],
+  ] as const)("puts a %s thread under %s", (status, view) => {
+    expect(missionControlThreadView(status)).toBe(view);
   });
 });

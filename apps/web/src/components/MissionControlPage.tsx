@@ -6,7 +6,11 @@ import {
 } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { resolveThreadActivityTimestamp } from "@t3tools/client-runtime/state/thread-sort";
-import { AuthOrchestrationOperateScope, ProviderDriverKind } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  type MissionControlAgentRow,
+  ProviderDriverKind,
+} from "@t3tools/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ActivityIcon,
@@ -17,7 +21,7 @@ import {
   PlusIcon,
   ServerIcon,
 } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { openCommandPalette } from "../commandPaletteBus";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
@@ -37,6 +41,7 @@ import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
 import {
   resolveMissionControlThreadStatus,
   type MissionControlThreadStatus,
+  missionControlThreadView,
 } from "./MissionControl.logic";
 import { MissionControlAgentActivity } from "./MissionControlAgentActivity.tsx";
 import { MissionControlPriorities } from "./MissionControlPriorities.tsx";
@@ -58,12 +63,11 @@ const threadStatuses = {
   failed: { label: "Failed", tone: "text-error-foreground" },
   limited: { label: "Usage limit", tone: "text-warning-foreground" },
   ready: { label: "Ready", tone: "text-muted-foreground" },
-  settled: { label: "Settled", tone: "text-muted-foreground" },
+  settled: { label: "Done", tone: "text-muted-foreground" },
   offline: { label: "Disconnected", tone: "text-muted-foreground" },
 } satisfies Record<MissionControlThreadStatus, { label: string; tone: string }>;
 
-const runningStatuses = new Set(["preparing", "working"]);
-const attentionStatuses = new Set(["approval", "input", "request", "failed", "limited"]);
+const OUTSIDE_AGENTS_REFRESH_MS = 60_000;
 
 const panelLabels = {
   priorities: "Top priorities",
@@ -105,6 +109,30 @@ export function MissionControlPage() {
   const startThread = useNewThreadHandler();
   const navigate = useNavigate();
 
+  const readAgentActivity =
+    typeof window === "undefined"
+      ? undefined
+      : window.desktopBridge?.getMissionControlAgentActivity;
+  const [outsideRunning, setOutsideRunning] = useState<readonly MissionControlAgentRow[]>([]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Polls the desktop's cached agent feed so the Running tile counts agents working outside Screddy.
+  useEffect(() => {
+    if (!readAgentActivity) return;
+    let active = true;
+    const read = () =>
+      void readAgentActivity(false).then(
+        ({ rows }) => {
+          if (active) setOutsideRunning(rows.filter((row) => row.status === "running"));
+        },
+        () => {},
+      );
+    read();
+    const timer = window.setInterval(read, OUTSIDE_AGENTS_REFRESH_MS);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [readAgentActivity]);
+
   const environmentById = new Map(environments.map((entry) => [entry.environmentId, entry]));
   const connected = environments.filter(({ connection }) => connection.phase === "connected");
   const availableProjects = allProjects.filter((project) => project.archivedAt == null);
@@ -137,10 +165,11 @@ export function MissionControlPage() {
       };
     })
     .sort((left, right) => right.activityMs - left.activityMs);
-  const running = recent.filter(({ status }) => runningStatuses.has(status));
-  const attention = recent.filter(({ status }) => attentionStatuses.has(status));
+  const running = recent.filter(({ status }) => missionControlThreadView(status) === "running");
+  const attention = recent.filter(({ status }) => missionControlThreadView(status) === "attention");
   const threadViews = { recent: recent.slice(0, recentThreadLimit), running, attention };
   const shown = threadViews[view];
+  const shownOutside = view === "running" ? outsideRunning : [];
   const activeView = views.find(({ id }) => id === view) ?? views[0];
   const projects = sortScopedProjectsForSidebar(
     availableProjects.filter((project) => !project.isScratch),
@@ -247,7 +276,7 @@ export function MissionControlPage() {
                 <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1 text-sm font-medium">{title}</span>
                 <span className="font-mono text-sm text-muted-foreground tabular-nums">
-                  {threadViews[id].length}
+                  {threadViews[id].length + (id === "running" ? outsideRunning.length : 0)}
                 </span>
               </button>
             ))}
@@ -262,7 +291,7 @@ export function MissionControlPage() {
               <h2 className="border-b border-border px-4 py-3 text-sm font-semibold">
                 {activeView.title}
               </h2>
-              {shown.length > 0 ? (
+              {shown.length + shownOutside.length > 0 ? (
                 <ul className="divide-y divide-border/70">
                   {shown.map(
                     ({ thread, project, environment, status, activity, provider, instance }) => (
@@ -305,6 +334,25 @@ export function MissionControlPage() {
                       </li>
                     ),
                   )}
+                  {shownOutside.map((agent) => (
+                    <li key={agent.id} className="flex items-center gap-3 px-4 py-3">
+                      <ActivityIcon
+                        aria-hidden="true"
+                        className="size-4 shrink-0 text-muted-foreground"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium" dir="auto">
+                          {agent.title}
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                          {agent.source}
+                        </span>
+                      </span>
+                      <span className={cn("shrink-0 text-xs", threadStatuses.working.tone)}>
+                        {threadStatuses.working.label}
+                      </span>
+                    </li>
+                  ))}
                 </ul>
               ) : (
                 <p className="px-4 py-5 text-sm text-muted-foreground">
