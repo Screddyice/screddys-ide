@@ -79,7 +79,7 @@ Use **Split workspace** in a thread header to add a side-by-side pane. Each pane
 
 For contributors: the chooser button is `SplitPaneThreadSelector` and the searchable thread list is `SplitThreadPicker`, so every pane shares one implementation.
 
-The first pane's thread chooser sits in that pane's own header. The eye button beside it hides the chooser and brings it back; hiding it leaves every pane's chat and draft as they were.
+The first pane's thread chooser sits in that pane's own header. The eye button beside it hides the chooser and brings it back; hiding it leaves every pane's chat and draft as they were. On the desktop app that header is still the window title bar, so you can drag the window by it and it stays clear of the window controls when the sidebar is collapsed.
 
 ## Thread status in the sidebar
 

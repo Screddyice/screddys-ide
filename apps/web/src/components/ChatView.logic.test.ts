@@ -7,7 +7,11 @@ import {
   withMessageContext,
   deriveAvailableRevertTurnCounts,
 } from "./ChatView.logic";
-import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
+import {
+  chatHeaderLayoutClass,
+  recallCheckoutIsRepo,
+  rememberCheckoutIsRepo,
+} from "./ChatView.logic";
 import { ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import { deriveProviderInstanceEntries } from "../providerInstances";
 import { ensureInlineContextReferences } from "../lib/composerContextReferences";
@@ -1214,5 +1218,31 @@ describe("deriveAvailableRevertTurnCounts", () => {
   it("offers nothing without a provider session to rewind", () => {
     expect(deriveAvailableRevertTurnCounts(projection({ providerSessionId: null })).size).toBe(0);
     expect(deriveAvailableRevertTurnCounts(null).size).toBe(0);
+  });
+});
+
+describe("chatHeaderLayoutClass", () => {
+  it("keeps the desktop title bar behavior on the primary split pane header", () => {
+    const split = chatHeaderLayoutClass({
+      electron: true,
+      splitPane: true,
+      reserveControlInset: true,
+    });
+    expect(split).toContain("drag-region");
+    expect(split).toContain("wco:pr-(--workspace-native-controls-inset)");
+    expect(split).toContain(
+      "[[data-sidebar-state=collapsed]_&]:pl-[var(--workspace-titlebar-content-left)]",
+    );
+    expect(split).toContain("border-b");
+  });
+
+  it("adds no drag region to the split pane header on the web", () => {
+    const split = chatHeaderLayoutClass({
+      electron: false,
+      splitPane: true,
+      reserveControlInset: false,
+    });
+    expect(split).not.toContain("drag-region");
+    expect(split).toContain("border-b");
   });
 });

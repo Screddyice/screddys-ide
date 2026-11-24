@@ -34,7 +34,11 @@ import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
 import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
 import { resolveDraftHeroState } from "./ChatView.logic";
 import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
-import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
+import {
+  chatHeaderLayoutClass,
+  recallCheckoutIsRepo,
+  rememberCheckoutIsRepo,
+} from "./ChatView.logic";
 import { useLogicalProjectEnvironments } from "../hooks/useLogicalProjectEnvironments";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { useProjectScriptEditing } from "./chat/useProjectScriptEditing";
@@ -193,7 +197,6 @@ import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { shortcutLabelForCommand } from "../keybindings";
 import { cn } from "~/lib/utils";
 import { isModelPickerOpen } from "../modelPickerVisibility";
-import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 import { toastManager } from "./ui/toast";
 import { projectScriptIdFromCommand } from "~/projectScripts";
 import { newMessageId } from "~/lib/utils";
@@ -289,7 +292,6 @@ import { ChatHeader } from "./chat/ChatHeader";
 import {
   PrimarySplitPaneControls,
   PrimarySplitPaneSelectorContext,
-  splitPaneHeaderClass,
 } from "./chat/SplitPaneThreadSelector";
 import { useSideChat } from "./chat/useSideChat";
 import { useRemoteOpenState } from "~/remoteOpen";
@@ -3363,19 +3365,11 @@ export default function ChatView(props: ChatViewProps) {
             data-split-pane-header={primarySplitPaneSelector ? "" : undefined}
             className={cn(
               "relative bg-background [[data-panel-animations=true]_&]:motion-safe:transition-[padding-left] [[data-panel-animations=true]_&]:motion-safe:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:motion-safe:ease-out",
-              primarySplitPaneSelector
-                ? splitPaneHeaderClass
-                : [
-                    isElectron
-                      ? cn(
-                          "drag-region flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center px-3 sm:px-5",
-                          reserveTitleBarControlInset &&
-                            !inlineRightPanelOwnsTitleBar &&
-                            "wco:pr-(--workspace-native-controls-inset)",
-                        )
-                      : "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center pl-(--workspace-gutter-start) pr-(--workspace-gutter-end)",
-                    COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
-                  ],
+              chatHeaderLayoutClass({
+                electron: isElectron,
+                splitPane: Boolean(primarySplitPaneSelector),
+                reserveControlInset: reserveTitleBarControlInset && !inlineRightPanelOwnsTitleBar,
+              }),
             )}
           >
             {isElectron && rightPanelControlsAtRoot ? (
