@@ -1159,6 +1159,23 @@ export const MissionControlHandoffSchema = Schema.Union([
 export type MissionControlHandoffRequest = typeof MissionControlHandoffRequestSchema.Type;
 export type MissionControlHandoff = typeof MissionControlHandoffSchema.Type;
 
+/** What happened after Screddy typed a task into Grok Bot and tried to press Send. */
+export const GrokBotPromptResultSchema = Schema.Struct({
+  outcome: Schema.Literals(["sent", "typed", "failed"]),
+  /** Why Screddy left the task for you to send, or could not open Grok Bot. */
+  reason: Schema.optional(
+    Schema.Literals([
+      "not-shown",
+      "helper-busy",
+      "driver-unavailable",
+      "not-confirmed",
+      "unsupported",
+      "open-failed",
+    ]),
+  ),
+});
+export type GrokBotPromptResult = typeof GrokBotPromptResultSchema.Type;
+
 export const MissionControlRequestSchema = Schema.Union([
   Schema.Struct({
     view: Schema.Literal("priorities"),
@@ -1309,6 +1326,8 @@ export interface DesktopBridge {
   routeMissionControlItems: (
     requests: readonly MissionControlHandoffRequest[],
   ) => Promise<readonly MissionControlHandoff[]>;
+  /** Opens a Grok Bot prompt link, then presses Send once the box holds exactly that task. */
+  sendGrokBotPrompt?: (link: string) => Promise<GrokBotPromptResult>;
   getAppBranding: () => DesktopAppBranding | null;
   getRelayTelemetryEnabled: () => boolean;
   getPathForFile: (file: File) => string;

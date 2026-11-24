@@ -26,6 +26,7 @@ import {
   MissionControlHandoffButton,
   useMissionControlHandoffs,
 } from "./MissionControlHandoffButton";
+import { toastManager } from "./ui/toast";
 
 const calls = vi.hoisted(() => ({
   start: vi.fn(),
@@ -77,7 +78,10 @@ const item: MissionControlItem = {
     workflow: "implementation",
   },
 };
-function installBridge(handoff: MissionControlHandoff) {
+function installBridge(
+  handoff: MissionControlHandoff,
+  extra: Partial<Pick<DesktopBridge, "sendGrokBotPrompt">> = {},
+) {
   calls.start.mockReset();
   calls.scratch.mockReset();
   calls.refreshProviders.mockReset();
@@ -93,6 +97,7 @@ function installBridge(handoff: MissionControlHandoff) {
     value: {
       routeMissionControlItems: route,
       openExternal,
+      ...extra,
       getLocalEnvironmentEnabled: () => false,
       getLocalEnvironmentBootstraps: () => [],
     },
@@ -428,6 +433,28 @@ it("opens the named assistant with the task typed into its message box", async (
   expect(isGrokBotPromptLink(opened.href)).toBe(true);
   expect(clip).not.toHaveBeenCalled();
   expect(calls.start).not.toHaveBeenCalled();
+});
+
+it.each([
+  [{ outcome: "sent" }, "Sent to Test Assistant"],
+  [{ outcome: "typed", reason: "not-shown" }, "Opened Test Assistant · press Send there"],
+] as const)("asks the desktop app to send the task and reports %o", async (result, title) => {
+  const sendGrokBotPrompt = vi
+    .fn<NonNullable<DesktopBridge["sendGrokBotPrompt"]>>()
+    .mockResolvedValue(result);
+  using bridge = installBridge(
+    { kind: "grok", botName: "Test Assistant", url: "grokbot://app/v1/agent?id=fixture" },
+    { sendGrokBotPrompt },
+  );
+  await using screen = await render(<Harness />);
+  using toast = vi.spyOn(toastManager, "add");
+  await screen.getByRole("button", { name: "Go to Grok Bot for " + item.title }).click();
+  await expect.poll(() => sendGrokBotPrompt.mock.calls.length).toBe(1);
+  const link = sendGrokBotPrompt.mock.calls[0]![0];
+  expect(isGrokBotPromptLink(link)).toBe(true);
+  expect(new URL(link).searchParams.get("text")).toContain(JSON.stringify(item.title));
+  expect(bridge.openExternal).not.toHaveBeenCalled();
+  await expect.poll(() => toast.mock.calls.at(-1)?.[0]?.title).toBe(title);
 });
 
 describe("grokBotPromptUrl", () => {
