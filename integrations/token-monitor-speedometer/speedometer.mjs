@@ -118,6 +118,7 @@ export async function activate(ctx) {
     });
   }
 
+  let trayReported = false;
   return {
     renderTray(canvas, { height }) {
       const inset = Math.round(height * 0.055);
@@ -125,6 +126,13 @@ export async function activate(ctx) {
         .getContext("2d")
         .drawImage(trayMark, inset, inset, height - inset * 2, height - inset * 2);
       trackRate();
+      // Tells Screddy this SR mark is in the menu bar, so it does not add a second one.
+      if (!trayReported) {
+        trayReported = true;
+        void ctx.backend.call("trayShown").catch(() => {
+          trayReported = false;
+        });
+      }
     },
     mount(container, initial) {
       const panel = document.createElement("section");

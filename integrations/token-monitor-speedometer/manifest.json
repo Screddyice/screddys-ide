@@ -2,7 +2,7 @@
   "tmApi": 1,
   "id": "screddy-speedometer",
   "name": "Screddy Token Speedometer",
-  "version": "1.6.5",
+  "version": "1.6.6",
   "ui": "speedometer.mjs",
   "backend": "activity.cjs",
   "css": ["speedometer.css"],
@@ -15,5 +15,8 @@
       "surfaces": ["home", "tray"],
       "defaultSurfaces": ["home", "tray"]
     }
-  ]
+  ],
+  "background": true,
+  "backgroundDescription": "Shares today's tokens, cost and plan limits with the Screddy menu bar every 30 seconds.",
+  "defaults": { "background": true }
 }
