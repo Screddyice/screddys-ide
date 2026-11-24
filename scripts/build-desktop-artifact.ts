@@ -1099,6 +1099,11 @@ export const DESKTOP_EXTRA_RESOURCES = [
     from: "apps/desktop/prod-resources/resource-monitor",
     to: "resource-monitor",
   },
+  // Copied into Token Monitor at startup by DesktopTokenMonitorPlugin.
+  {
+    from: "integrations/token-monitor-speedometer",
+    to: "token-monitor-speedometer",
+  },
 ] as const;
 export const LINUX_CAPTURE_EXTRA_RESOURCES = [
   {

@@ -608,6 +608,35 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     }),
   );
 
+  it.effect("packages the Token Speedometer plug-in on every platform", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const repoRoot = path.join(import.meta.dirname, "..");
+      for (const platform of ["mac", "linux", "win"] as const) {
+        const target = platform === "mac" ? "dmg" : platform === "linux" ? "AppImage" : "nsis";
+        const config = yield* createBuildConfig(
+          platform,
+          target,
+          "0.1.0",
+          false,
+          false,
+          undefined,
+          undefined,
+        );
+        const entry = (config.extraResources as Array<{ from: string; to: string }>).find(
+          (resource) => resource.to === "token-monitor-speedometer",
+        );
+        assert.strictEqual(entry?.from, "integrations/token-monitor-speedometer", platform);
+      }
+      assert.isTrue(
+        yield* fs.exists(
+          path.join(repoRoot, "integrations/token-monitor-speedometer", "manifest.json"),
+        ),
+      );
+    }),
+  );
+
   // pnpm writes "set this to true or false" placeholders into allowBuilds when a
   // tarball changes. pnpm ignores them, but the release build decode rejects them.
   it.effect("decodes the repo allowBuilds and every file: tarball it names exists", () =>
