@@ -1,12 +1,20 @@
+// @effect-diagnostics nodeBuiltinImport:off -- Opens the same user's Token Monitor app by bundle id.
+import * as NodeChildProcess from "node:child_process";
+
 import { DesktopTokenUsageMenuState, type DesktopTokenUsagePeriod } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { formatCount, formatTokens, formatUsd } from "@t3tools/shared/usageFormat";
 import { Menu, nativeImage, Tray, webContents, type MenuItemConstructorOptions } from "electron";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
+import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 
 import * as DesktopAssets from "../../app/DesktopAssets.ts";
+import * as DesktopEnvironment from "../../app/DesktopEnvironment.ts";
+import * as DesktopTokenMonitorPlugin from "../../app/DesktopTokenMonitorPlugin.ts";
 import * as DesktopWindow from "../../window/DesktopWindow.ts";
 import * as DesktopIpc from "../DesktopIpc.ts";
 import {
@@ -14,10 +22,28 @@ import {
   TOKEN_USAGE_MENU_OPEN_ACTION,
   TOKEN_USAGE_MENU_REFRESH_ACTION,
 } from "../channels.ts";
+import {
+  SNAPSHOT_RELATIVE_PATH,
+  TOKEN_MONITOR_BUNDLE_ID,
+  parseTokenMonitorSnapshot,
+  tokenMonitorMenuItems,
+  type TokenMonitorMenuState,
+} from "./tokenMonitorSection.ts";
 
 interface UsageMenuActions {
   readonly open: () => void;
   readonly refresh: () => void;
+}
+
+const SNAPSHOT_POLL = "30 seconds";
+
+function openTokenMonitor() {
+  NodeChildProcess.execFile(
+    "/usr/bin/open",
+    ["-b", TOKEN_MONITOR_BUNDLE_ID],
+    { timeout: 5_000 },
+    () => {},
+  );
 }
 
 class TokenUsageTrayInitError extends Schema.TaggedError<TokenUsageTrayInitError>()(
@@ -53,9 +79,10 @@ export function usageTrayTooltip({ summary }: DesktopTokenUsageMenuState): strin
     : `${today} · ${formatTokens(summary.tokensPerMinute)}/min`;
 }
 
-function usageMenuTemplate(
+export function usageMenuTemplate(
   { loading, summary }: DesktopTokenUsageMenuState,
   actions: UsageMenuActions,
+  tokenMonitor: readonly MenuItemConstructorOptions[] = [],
 ): MenuItemConstructorOptions[] {
   const template = [info("Screddy Token Usage"), { type: "separator" as const }];
   if (summary === null) {
@@ -98,6 +125,7 @@ function usageMenuTemplate(
     if (summary.hasUnpricedUsage) template.push(info("Cost excludes usage without pricing"));
   }
   template.push(
+    ...tokenMonitor,
     { type: "separator" },
     { label: "Refresh", click: actions.refresh },
     { label: "Open Usage in Screddy…", click: actions.open },
@@ -110,17 +138,29 @@ function startTokenUsageTray(iconPath: string, actions: UsageMenuActions) {
   if (icon.isEmpty()) return null;
   const tray = new Tray(icon);
   tray.setToolTip("Screddy Token Usage");
+  let usage = EMPTY_MENU;
+  let monitor: MenuItemConstructorOptions[] = [];
   let previous: string | undefined;
-  function update(state: DesktopTokenUsageMenuState) {
-    const current = JSON.stringify(state);
+  function render() {
+    const current = JSON.stringify([usage, monitor.map((item) => item.label ?? item.type)]);
     if (current === previous) return;
-    tray.setContextMenu(Menu.buildFromTemplate(usageMenuTemplate(state, actions)));
+    tray.setContextMenu(Menu.buildFromTemplate(usageMenuTemplate(usage, actions, monitor)));
     // The menu bar shows the logo alone; the numbers live in the tooltip and the menu.
-    tray.setToolTip(usageTrayTooltip(state));
+    tray.setToolTip(usageTrayTooltip(usage));
     previous = current;
   }
-  update(EMPTY_MENU);
-  return { update, destroy: () => tray.destroy() };
+  render();
+  return {
+    update(state: DesktopTokenUsageMenuState) {
+      usage = state;
+      render();
+    },
+    setTokenMonitor(state: TokenMonitorMenuState, now: number) {
+      monitor = tokenMonitorMenuItems(state, now, openTokenMonitor);
+      render();
+    },
+    destroy: () => tray.destroy(),
+  };
 }
 
 export const installTokenUsageMenu = Effect.fn("desktop.ipc.installTokenUsageMenu")(function* () {
@@ -162,6 +202,20 @@ export const installTokenUsageMenu = Effect.fn("desktop.ipc.installTokenUsageMen
     (entry) => Effect.sync(() => entry?.destroy()),
   );
   if (tray === null) return;
+
+  // Token Monitor's numbers, from the snapshot its Token Speedometer plug-in writes.
+  const environment = yield* DesktopEnvironment.DesktopEnvironment;
+  const fs = yield* FileSystem.FileSystem;
+  const snapshotPath = environment.path.join(environment.stateDir, ...SNAPSHOT_RELATIVE_PATH);
+  const tokenMonitorDir = DesktopTokenMonitorPlugin.tokenMonitorDirectory(environment);
+  yield* Effect.gen(function* () {
+    const installed = yield* fs.exists(tokenMonitorDir).pipe(Effect.orElseSucceed(() => false));
+    const text = installed
+      ? yield* fs.readFileString(snapshotPath).pipe(Effect.option)
+      : Option.none<string>();
+    const snapshot = Option.match(text, { onNone: () => null, onSome: parseTokenMonitorSnapshot });
+    tray.setTokenMonitor({ installed, snapshot }, yield* Clock.currentTimeMillis);
+  }).pipe(Effect.repeat(Schedule.spaced(SNAPSHOT_POLL)), Effect.forkScoped);
 
   function clear() {
     unbind();

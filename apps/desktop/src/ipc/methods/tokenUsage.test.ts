@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("electron", () => ({}));
 
-import { usageTrayTooltip } from "./tokenUsage.ts";
+import { usageMenuTemplate, usageTrayTooltip } from "./tokenUsage.ts";
 
 const period = (totalTokens: number): DesktopTokenUsagePeriod => ({
   totalTokens,
@@ -34,5 +34,25 @@ describe("usageTrayTooltip", () => {
       "2.73B tokens · 1.20M/min",
     );
     expect(usageTrayTooltip({ loading: false, summary: summary(0) })).toBe("2.73B tokens · 0/min");
+  });
+});
+
+describe("usageMenuTemplate", () => {
+  it("puts the Token Monitor section above Refresh and Open Usage", () => {
+    const actions = { open: () => {}, refresh: () => {} };
+    const tokenMonitor = [
+      { type: "separator" as const },
+      { label: "Token Monitor", enabled: false },
+    ];
+    const labels = usageMenuTemplate({ loading: false, summary: summary() }, actions, tokenMonitor)
+      .slice(-5)
+      .map((item) => item.label ?? item.type);
+    expect(labels).toEqual([
+      "separator",
+      "Token Monitor",
+      "separator",
+      "Refresh",
+      "Open Usage in Screddy…",
+    ]);
   });
 });

@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off -- Asks the gh CLI for the private update feed token.
 import * as NodeChildProcess from "node:child_process";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";

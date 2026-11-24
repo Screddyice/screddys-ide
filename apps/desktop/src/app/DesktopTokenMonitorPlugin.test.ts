@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off -- Hashes the shipped plug-in files to guard its version.
 import * as NodeCrypto from "node:crypto";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -169,6 +170,7 @@ it.layer(NodeServices.layer)("DesktopTokenMonitorPlugin", (it) => {
       const { fs, path, manifest } = yield* setup;
       const released: Record<string, string> = {
         "1.6.5": "ab1a10537fb16b3cdbcd089ec0e730242aa8413cc06eb4fd616d726fb221c42c",
+        "1.6.6": "cb7225e3e21ba3e8ad6564d10c07826fc8b6d3813c70677f3480eb70151d4c65",
       };
       const hash = NodeCrypto.createHash("sha256");
       const { version: _version, ...rest } = manifest as Record<string, unknown>;
