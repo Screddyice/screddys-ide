@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("electron", () => ({}));
 
-import { usageTrayTitle } from "./tokenUsage.ts";
+import { usageTrayTooltip } from "./tokenUsage.ts";
 
 const period = (totalTokens: number): DesktopTokenUsagePeriod => ({
   totalTokens,
@@ -26,13 +26,13 @@ const summary = (tokensPerMinute?: number): DesktopTokenUsageSummary => ({
   ...(tokensPerMinute === undefined ? {} : { tokensPerMinute }),
 });
 
-describe("usageTrayTitle", () => {
+describe("usageTrayTooltip", () => {
   it("shows today's tokens and, once measured, the throughput", () => {
-    expect(usageTrayTitle({ loading: true, summary: null })).toBe("");
-    expect(usageTrayTitle({ loading: false, summary: summary() })).toBe("2.73B tokens");
-    expect(usageTrayTitle({ loading: false, summary: summary(1_200_000) })).toBe(
+    expect(usageTrayTooltip({ loading: true, summary: null })).toBe("Screddy Token Usage");
+    expect(usageTrayTooltip({ loading: false, summary: summary() })).toBe("2.73B tokens");
+    expect(usageTrayTooltip({ loading: false, summary: summary(1_200_000) })).toBe(
       "2.73B tokens · 1.20M/min",
     );
-    expect(usageTrayTitle({ loading: false, summary: summary(0) })).toBe("2.73B tokens · 0/min");
+    expect(usageTrayTooltip({ loading: false, summary: summary(0) })).toBe("2.73B tokens · 0/min");
   });
 });
