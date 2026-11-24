@@ -22,6 +22,10 @@ To connect SRCOS, set `srcosTenant` and the absolute path `srcosCredentialFile`.
 
 Mission Control routes and prioritizes tasks locally by default. Enter your own OpenRouter API key in the optional JEV onboarding step, or set it up later under **Settings → General → Mission Control**. Screddy verifies JEV and stores the key in encrypted desktop storage. An independently configured `jevCommand` remains available when a saved OpenRouter key is absent. To show Cursor Cloud activity in Screddy, set `cursorCloud` to `true` and supply `CURSOR_API_KEY` to the desktop process through its environment.
 
+## Automations
+
+**Automations** in the sidebar, under Mission Control, opens its own page listing every scheduled task across all projects and environments. Use the scope picker at the top to narrow it to one project or environment. The same list is still under **Settings → Automations**.
+
 ## Build and run on Apple Silicon
 
 Use Node 26.12.1, pnpm 12.14.0, Xcode Command Line Tools, and Rust with the `aarch64-apple-darwin` target. From the repository root:

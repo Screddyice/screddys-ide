@@ -215,11 +215,10 @@ export function SidebarWorkspaceLinks({
       ) : null}
       <SidebarMenuItem>
         <SidebarMenuButton
-          isActive={pathname === "/settings/scheduled-tasks"}
+          isActive={pathname === "/automations"}
           render={
             <Link
-              to="/settings/scheduled-tasks"
-              search={{ project: "all", machine: "all", checkout: "all" }}
+              to="/automations"
               activeOptions={{ exact: true, includeSearch: false }}
               onClick={() => {
                 if (isMobile) setOpenMobile(false);
