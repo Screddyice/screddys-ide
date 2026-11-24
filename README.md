@@ -36,6 +36,8 @@ If a background service (for example a launchd agent with `KeepAlive`) keeps a s
 
 Crow CI on Shawn's Mac runs `.woodpecker.yaml` on every push and pull request: the Mission Control and chat tests, on Node 26.12.1 in a Linux arm64 container. The GitHub **Verify Screddy changes** job runs the same tests on every pull request, independently of Crow. A push made while the Mac is asleep or offline gets no Crow run.
 
+Before opening a pull request, run `pnpm exec vp run typecheck` inside the package you changed. `apps/web` passes with no warnings, so a new warning comes from your change.
+
 ## Build a preview from main
 
 Run **Package Screddy for Apple Silicon** on the `main` branch in GitHub Actions with a version such as `0.1.42-preview.20261122.1`. The workflow checks Mission Control and chat behavior on pull requests. Builds from `main` attach the DMG, ZIP, and SHA-256 checksums to the workflow run.

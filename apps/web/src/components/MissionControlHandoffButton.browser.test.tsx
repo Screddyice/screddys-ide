@@ -9,6 +9,7 @@ import {
   type MissionControlItem,
   type ServerProvider,
 } from "@t3tools/contracts";
+import { BearerConnectionTarget } from "@t3tools/client-runtime/connection";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { describe, expect, it, vi } from "vite-plus/test";
 import * as Option from "effect/Option";
@@ -143,7 +144,11 @@ it.each([
             environmentId: id,
             connection: { phase: "connected" },
             entry: {
-              target: { _tag: "BearerConnectionTarget" },
+              target: new BearerConnectionTarget({
+                environmentId: id,
+                connectionId: id,
+                label: id,
+              }),
               profile: Option.some({ _tag: "BearerConnectionProfile", httpBaseUrl: url }),
             },
           }) as EnvironmentPresentation,
