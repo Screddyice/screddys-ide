@@ -1,10 +1,12 @@
-// @effect-diagnostics nodeBuiltinImport:off globalDate:off -- Watches Token Monitor's panel and hands focus back with osascript.
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off -- Watches Token Monitor's panel and hands focus back with osascript.
 import * as NodeChildProcess from "node:child_process";
 
 import { TOKEN_MONITOR_BUNDLE_ID } from "./tokenMonitorSection.ts";
 
 /** A click this soon after the panel closed is the click that closed it, through focus loss. */
 const CLOSED_BY_THIS_CLICK_MS = 800;
+/** Opens Token Monitor anyway if the watcher has not reported the app in front by then. */
+const OPEN_FALLBACK_MS = 1_000;
 
 export type PanelClick = "open" | "close" | "none";
 
@@ -32,6 +34,8 @@ export interface TokenMonitorPanelDeps {
   /** Brings the app with this pid back to the front; Token Monitor then hides its panel. */
   readonly activate: (pid: number) => void;
   readonly now: () => number;
+  /** Runs `fn` after `ms` milliseconds; the returned function cancels it. */
+  readonly schedule: (ms: number, fn: () => void) => () => void;
 }
 
 /**
@@ -40,26 +44,52 @@ export interface TokenMonitorPanelDeps {
  * the app that was in front, and the click that just closed it does not open it again.
  */
 export function makeTokenMonitorPanel(deps: TokenMonitorPanelDeps) {
+  // The panel counts as open from the click that opens it, so a second click while it is still
+  // appearing closes it; the watcher's "shown" and "hidden" lines then keep this in step.
   let visible = false;
   let hiddenAt: number | null = null;
   let frontPid = 0;
   let watcher: PanelWatcher | null = null;
+  let cancelFallback: (() => void) | null = null;
+  let generation = 0;
   const markHidden = () => {
     if (visible) hiddenAt = deps.now();
     visible = false;
   };
+  const stopWatching = () => {
+    cancelFallback?.();
+    cancelFallback = null;
+    watcher?.kill();
+    watcher = null;
+  };
   return {
     click(): PanelClick {
       const action = panelClickAction({ visible, hiddenAt }, deps.now());
-      if (action === "close") deps.activate(frontPid);
+      if (action === "close") {
+        deps.activate(frontPid);
+        // Closed from Screddy's side now, so the next click opens even if no "hidden" line comes.
+        markHidden();
+      }
       if (action !== "open") return action;
-      watcher?.kill();
+      stopWatching();
+      const current = ++generation;
+      const live = () => current === generation;
       hiddenAt = null;
-      const current = deps.spawnWatcher(
+      frontPid = 0;
+      let opened = false;
+      const openOnce = () => {
+        if (opened || !live()) return;
+        opened = true;
+        cancelFallback?.();
+        cancelFallback = null;
+        deps.open();
+      };
+      watcher = deps.spawnWatcher(
         (line) => {
+          if (!live()) return;
           if (line.startsWith("front ")) {
             frontPid = Number(line.slice("front ".length)) || 0;
-            deps.open();
+            openOnce();
           } else if (line === "shown") {
             visible = true;
           } else if (line === "hidden") {
@@ -67,17 +97,23 @@ export function makeTokenMonitorPanel(deps: TokenMonitorPanelDeps) {
           }
         },
         () => {
+          if (!live()) return;
+          openOnce();
           markHidden();
-          if (watcher === current) watcher = null;
+          watcher = null;
         },
       );
-      watcher = current;
-      if (!current) deps.open();
+      if (watcher) {
+        visible = true;
+        if (!opened) cancelFallback = deps.schedule(OPEN_FALLBACK_MS, openOnce);
+      } else {
+        openOnce();
+      }
       return action;
     },
     dispose() {
-      watcher?.kill();
-      watcher = null;
+      generation++;
+      stopWatching();
     },
   };
 }
@@ -100,7 +136,7 @@ function panelShowing() {
     const w = ObjC.castRefToObject($.CFArrayGetValueAtIndex(list, i));
     if (w.objectForKey("kCGWindowOwnerPID").js !== pid) continue;
     const b = ObjC.deepUnwrap(w.objectForKey("kCGWindowBounds"));
-    if (b.Width >= 200 && b.Height >= 200) return true;
+    if (b.Width >= 100 && b.Height >= 100) return true;
   }
   return false;
 }
@@ -159,5 +195,9 @@ else $.NSWorkspace.sharedWorkspace.launchApplication("Finder");`;
       );
     },
     now: () => Date.now(),
+    schedule(ms, fn) {
+      const timer = setTimeout(fn, ms);
+      return () => clearTimeout(timer);
+    },
   };
 }
