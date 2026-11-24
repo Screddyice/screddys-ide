@@ -11,6 +11,9 @@ import {
   usageLimitRunPresentedAsLatest,
 } from "@t3tools/shared/orchestrationV2ThreadError";
 import * as Option from "effect/Option";
+import { cn } from "~/lib/utils";
+import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
+import { splitPaneHeaderClass } from "./chat/SplitPaneThreadSelector";
 import type { SetStateAction } from "react";
 import { applyClaudePromptEffortPrefix, resolvePromptInjectedEffort } from "@t3tools/shared/model";
 import { getProviderModelCapabilities } from "../providerModels";
@@ -1515,4 +1518,27 @@ export function deriveAvailableRevertTurnCounts(projection: ThreadStructure | nu
     if (providerTurn?.providerThreadId === providerThread.id) available.add(run.ordinal);
   }
   return available;
+}
+
+const topbarClass = "h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)]";
+
+/** On desktop the chat header is the window title bar, including the primary split pane's header. */
+export function chatHeaderLayoutClass(options: {
+  readonly electron: boolean;
+  readonly splitPane: boolean;
+  readonly reserveControlInset: boolean;
+}) {
+  return cn(
+    options.splitPane
+      ? splitPaneHeaderClass
+      : options.electron
+        ? cn("flex shrink-0 items-center px-3 sm:px-5", topbarClass)
+        : cn(
+            "flex shrink-0 items-center pl-(--workspace-gutter-start) pr-(--workspace-gutter-end)",
+            topbarClass,
+          ),
+    options.electron && "drag-region",
+    options.electron && options.reserveControlInset && "wco:pr-(--workspace-native-controls-inset)",
+    COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
+  );
 }
