@@ -26,6 +26,10 @@ Mission Control routes and prioritizes tasks locally by default. Enter your own 
 
 **Automations** in the sidebar, under Mission Control, opens its own page listing every scheduled task across all projects and environments. Use the scope picker at the top to narrow it to one project or environment. The same list is still under **Settings → Automations**.
 
+## Token usage across Claude profiles
+
+The Usage page and the menu bar token count add up Claude Code usage from every Claude profile on the machine: `~/.claude`, any `~/.claude-*` folder, and the folder in the server's `CLAUDE_CONFIG_DIR`. Switching profiles between sessions does not hide earlier usage, and a message stored in two profiles is counted once. A Claude provider with its own home path under **Settings → Providers** counts only that home. A profile kept anywhere else is counted only while the server's `CLAUDE_CONFIG_DIR` points at it.
+
 ## Build and run on Apple Silicon
 
 Use Node 26.12.1, pnpm 12.14.0, Xcode Command Line Tools, and Rust with the `aarch64-apple-darwin` target. From the repository root:

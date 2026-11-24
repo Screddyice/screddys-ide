@@ -1,11 +1,13 @@
 import type { ClaudeSettings } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import {
   parseTimestampMs,
   tokenCount,
+  type ProviderUsageInstance,
   type ProviderUsageReader,
   type TranscriptUsageFormat,
   type UsageRecord,
@@ -123,18 +125,42 @@ export const claudeUsageFormat: TranscriptUsageFormat<void> = {
   parseProjected: (projected) => parseClaudeRecord(projected),
 };
 
-export const claudeUsageReader: ProviderUsageReader<ClaudeSettings, Path.Path> = {
+export const claudeUsageDirectories = Effect.fn("claudeUsageReader.directories")(function* ({
+  config,
+  environment,
+}: ProviderUsageInstance<ClaudeSettings>) {
+  if (config === undefined) return [];
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const homeDirectory = yield* HostProcess.HomeDirectory;
+  const configured = config.homePath.trim();
+  if (configured) {
+    return [{ dir: path.resolve(expandHomePath(configured, homeDirectory), "projects") }];
+  }
+  // Usage belongs to the user, not to whichever profile this server was started with,
+  // so count every Claude profile on the machine. Records dedupe by message id.
+  const siblings = yield* fs.readDirectory(homeDirectory).pipe(
+    Effect.map((names) => names.filter((name) => name.startsWith(".claude-"))),
+    Effect.orElseSucceed((): ReadonlyArray<string> => []),
+  );
+  const homes = [
+    environment.CLAUDE_CONFIG_DIR?.trim() || undefined,
+    path.join(homeDirectory, ".claude"),
+    ...siblings.map((name) => path.join(homeDirectory, name)),
+  ].flatMap((home) => (home === undefined ? [] : [path.resolve(home, "projects")]));
+  const directories: Array<{ readonly dir: string }> = [];
+  for (const dir of new Set(homes)) {
+    if (yield* fs.exists(dir).pipe(Effect.orElseSucceed(() => false))) directories.push({ dir });
+  }
+  return directories;
+});
+
+export const claudeUsageReader: ProviderUsageReader<
+  ClaudeSettings,
+  FileSystem.FileSystem | Path.Path
+> = {
   kind: "transcripts",
   provider: "claude",
   format: claudeUsageFormat,
-  directories: Effect.fn("claudeUsageReader.directories")(function* ({ config, environment }) {
-    if (config === undefined) return [];
-    const path = yield* Path.Path;
-    const homeDirectory = yield* HostProcess.HomeDirectory;
-    const configured = config.homePath.trim();
-    const home = configured
-      ? expandHomePath(configured, homeDirectory)
-      : environment.CLAUDE_CONFIG_DIR?.trim() || path.join(homeDirectory, ".claude");
-    return [{ dir: path.resolve(home, "projects") }];
-  }),
+  directories: claudeUsageDirectories,
 };
