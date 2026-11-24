@@ -71,3 +71,20 @@ export function summarizeRunningAgents(
     return running > 0 || (todayTokens ?? 0) > 0 ? [{ provider, running, todayTokens }] : [];
   });
 }
+
+export interface TokenSample {
+  readonly tokens: number;
+  readonly atMs: number;
+}
+
+/** Tokens added per minute between two reads of today's total; null when the pair cannot say. */
+export function tokensPerMinute(
+  previous: TokenSample | null,
+  current: TokenSample | null,
+): number | null {
+  if (!previous || !current) return null;
+  const minutes = (current.atMs - previous.atMs) / 60_000;
+  // Today's total drops at midnight, so a smaller reading is a new day, not a negative rate.
+  if (minutes <= 0 || current.tokens < previous.tokens) return null;
+  return Math.round((current.tokens - previous.tokens) / minutes);
+}

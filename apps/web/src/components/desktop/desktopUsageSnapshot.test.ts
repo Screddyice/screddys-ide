@@ -78,4 +78,50 @@ describe("desktop usage menu", () => {
     expect(result?.sessions).toBe(1);
     expect(result?.providers[0]?.models[0]?.label).toBe("test-model");
   });
+  it("lists the most-used provider and model first and names each provider's plan", () => {
+    const heavier = summary.buckets.flatMap((bucket) => [
+      { ...bucket, provider: "claude" as const, model: "claude-small" },
+      {
+        ...bucket,
+        provider: "claude" as const,
+        model: "claude-big",
+        totals: { ...bucket.totals, outputTokens: 3_000 },
+      },
+    ]);
+    const result = buildDesktopUsageSnapshot(
+      [
+        {
+          environmentId: EnvironmentId.make("mac"),
+          label: "mac",
+          isPending: false,
+          canReadDiagnostics: true,
+          isConnected: true,
+          error: null,
+          summary: {
+            ...summary,
+            sources: [
+              ...summary.sources,
+              ...summary.sources.map((source) => ({
+                ...source,
+                fingerprint: { ...source.fingerprint, provider: "claude" as const },
+              })),
+            ],
+            buckets: [...summary.buckets, ...heavier],
+          },
+        },
+      ],
+      today,
+      earlier,
+      new Map([["claude", "Claude Ultra Subscription"]]),
+    );
+    expect(result?.providers.map(({ label, plan }) => [label, plan])).toEqual([
+      ["Claude Code", "Ultra"],
+      ["Codex", undefined],
+    ]);
+    expect(result?.providers[0]?.models.map(({ label }) => label)).toEqual([
+      "claude-big",
+      "claude-small",
+    ]);
+    expect(result?.topModel?.label).toBe("claude-big");
+  });
 });

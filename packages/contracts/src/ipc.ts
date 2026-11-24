@@ -1269,12 +1269,20 @@ export const DesktopTokenUsageSummary = Schema.Struct({
   providers: Schema.Array(
     Schema.Struct({
       label: DesktopTokenUsageLabel,
+      /** The signed-in plan, such as "Ultra"; absent when the provider reports none. */
+      plan: Schema.optionalKey(DesktopTokenUsageLabel),
       totalTokens: NonNegativeInt,
       models: Schema.Array(
         Schema.Struct({ label: DesktopTokenUsageLabel, totalTokens: NonNegativeInt }),
       ).check(Schema.isMaxLength(5)),
     }),
   ).check(Schema.isMaxLength(12)),
+  /** The model with the most tokens in the window, across every provider. */
+  topModel: Schema.optionalKey(
+    Schema.Struct({ label: DesktopTokenUsageLabel, totalTokens: NonNegativeInt }),
+  ),
+  /** Tokens added per minute between the last two usage reads; absent until two reads exist. */
+  tokensPerMinute: Schema.optionalKey(NonNegativeInt),
   records: NonNegativeInt,
   sessions: NonNegativeInt,
   isPartial: Schema.Boolean,

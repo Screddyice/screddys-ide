@@ -22,6 +22,8 @@ The **Running** tile counts Screddy threads that are working plus agents working
 
 Agent activity reports live state for agents you run outside Screddy on this Mac. A Codex or Grok Build session is **running** while the newest turn in its session log is open and the log was written in the last 10 minutes; a Grok Build session waiting on a permission prompt shows as needing input. A Cursor chat is running while a `cursor-agent` process is working in its folder. Claude Code reports its own state. Cursor cloud agents need `cursorCloud` and `CURSOR_API_KEY`.
 
+The bar at the top of Mission Control shows today's total tokens and the current throughput in tokens per minute. Throughput is the tokens added between the last two usage reads, which happen every minute while Mission Control is open; it says "measuring throughput…" until the second read. The menu bar item shows the same throughput after today's tokens, for example `2.73B tokens · 1.20M/min`, and re-reads usage every minute while Screddy is open, so a separate speedometer menu bar item is not needed.
+
 To connect SRCOS, set `srcosTenant` and the absolute path `srcosCredentialFile`. Store the HTTPS `origin` and access `token` together in that separate JSON file with owner-only permissions (`chmod 600`).
 
 Mission Control routes and prioritizes tasks locally by default. Enter your own OpenRouter API key in the optional JEV onboarding step, or set it up later under **Settings → General → Mission Control**. Screddy verifies JEV and stores the key in encrypted desktop storage. An independently configured `jevCommand` remains available when a saved OpenRouter key is absent. To show Cursor Cloud activity in Screddy, set `cursorCloud` to `true` and supply `CURSOR_API_KEY` to the desktop process through its environment.
@@ -32,7 +34,7 @@ Mission Control routes and prioritizes tasks locally by default. Enter your own 
 
 ## Token usage across Claude profiles
 
-The Usage page and the menu bar token count add up Claude Code usage from every Claude profile on the machine: `~/.claude`, any `~/.claude-*` folder, and the folder in the server's `CLAUDE_CONFIG_DIR`. Switching profiles between sessions does not hide earlier usage, and a message stored in two profiles is counted once. A Claude provider with its own home path under **Settings → Providers** counts only that home. A profile kept anywhere else is counted only while the server's `CLAUDE_CONFIG_DIR` points at it.
+The Usage page and the menu bar token count add up Claude Code usage from every Claude profile on the machine: `~/.claude`, any `~/.claude-*` folder, and the folder in the server's `CLAUDE_CONFIG_DIR`. Switching profiles between sessions does not hide earlier usage, and a message stored in two profiles is counted once. A Claude provider with its own home path under **Settings → Providers** counts only that home. A profile kept anywhere else is counted only while the server's `CLAUDE_CONFIG_DIR` points at it. The menu bar token menu names the model you used most in the last 30 days at the top, lists providers and their models from most to least used, and shows each provider's signed-in plan. A Claude Max 20x account reads **Ultra**; the tier comes from `claude auth status` for the profile Screddy's Claude provider uses.
 
 ## Build and run on Apple Silicon
 
