@@ -30,6 +30,7 @@ import {
   tokenMonitorMenuItems,
   type TokenMonitorMenuState,
 } from "./tokenMonitorSection.ts";
+import { macTokenMonitorPanelDeps, makeTokenMonitorPanel } from "./tokenMonitorPanel.ts";
 
 interface UsageMenuActions {
   readonly open: () => void;
@@ -151,10 +152,12 @@ function startTokenUsageTray(iconPath: string, actions: UsageMenuActions) {
     tray.setToolTip(usageTrayTooltip(usage));
     previous = current;
   }
+  // Clicking the logo again closes the panel it opened.
+  const panel = makeTokenMonitorPanel(macTokenMonitorPanelDeps(openTokenMonitor));
   // No setContextMenu: it would take over the left click that opens Token Monitor's panel.
   const onClick = (button: "left" | "right") => () => {
     if (srLogoClickAction(tokenMonitorInstalled, button) === "open-token-monitor") {
-      openTokenMonitor();
+      panel.click();
     } else {
       tray.popUpContextMenu(menu);
     }
@@ -172,7 +175,10 @@ function startTokenUsageTray(iconPath: string, actions: UsageMenuActions) {
       monitor = tokenMonitorMenuItems(state, now, openTokenMonitor);
       render();
     },
-    destroy: () => tray.destroy(),
+    destroy: () => {
+      panel.dispose();
+      tray.destroy();
+    },
   };
 }
 
