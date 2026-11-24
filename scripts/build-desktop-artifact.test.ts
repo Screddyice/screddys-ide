@@ -56,6 +56,7 @@ import {
   WindowsDesktopBuildPrerequisitesMissingError,
   WindowsPackagedPayloadValidationError,
   stageCursorSdkPlatformPackages,
+  stageTokenMonitorPlugin,
   WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
   WINDOWS_SERVER_ASAR_IGNORE_GLOBS,
   WINDOWS_SERVER_ASAR_RESOURCE,
@@ -629,12 +630,25 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         );
         assert.strictEqual(entry?.from, "integrations/token-monitor-speedometer", platform);
       }
-      assert.isTrue(
-        yield* fs.exists(
-          path.join(repoRoot, "integrations/token-monitor-speedometer", "manifest.json"),
-        ),
+      // electron-builder reads extraResources from the staged app, not the repo.
+      const stageAppDir = yield* fs.makeTempDirectoryScoped();
+      yield* stageTokenMonitorPlugin({ repoRoot, stageAppDir });
+      const source = path.join(repoRoot, "integrations/token-monitor-speedometer");
+      for (const name of yield* fs.readDirectory(source)) {
+        assert.deepStrictEqual(
+          yield* fs.readFile(
+            path.join(stageAppDir, "integrations/token-monitor-speedometer", name),
+          ),
+          yield* fs.readFile(path.join(source, name)),
+          name,
+        );
+      }
+      // It ships as a resource only, never inside app.asar.
+      assert.includeMembers(
+        [...DESKTOP_FILE_EXCLUSIONS],
+        ["!integrations/token-monitor-speedometer", "!integrations/token-monitor-speedometer/**/*"],
       );
-    }),
+    }).pipe(Effect.scoped),
   );
 
   // pnpm writes "set this to true or false" placeholders into allowBuilds when a
