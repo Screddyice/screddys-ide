@@ -44,9 +44,9 @@ function periodMenu(label: string, usage: DesktopTokenUsagePeriod): MenuItemCons
   };
 }
 
-/** The text beside the menu bar icon: today's tokens, then the throughput once it is measured. */
-export function usageTrayTitle({ summary }: DesktopTokenUsageMenuState): string {
-  if (summary === null) return "";
+/** The menu bar icon's tooltip: today's tokens, then the throughput once it is measured. */
+export function usageTrayTooltip({ summary }: DesktopTokenUsageMenuState): string {
+  if (summary === null) return "Screddy Token Usage";
   const today = `${formatTokens(summary.today.totalTokens)} tokens`;
   return summary.tokensPerMinute === undefined
     ? today
@@ -115,7 +115,8 @@ function startTokenUsageTray(iconPath: string, actions: UsageMenuActions) {
     const current = JSON.stringify(state);
     if (current === previous) return;
     tray.setContextMenu(Menu.buildFromTemplate(usageMenuTemplate(state, actions)));
-    tray.setTitle(usageTrayTitle(state));
+    // The menu bar shows the logo alone; the numbers live in the tooltip and the menu.
+    tray.setToolTip(usageTrayTooltip(state));
     previous = current;
   }
   update(EMPTY_MENU);
