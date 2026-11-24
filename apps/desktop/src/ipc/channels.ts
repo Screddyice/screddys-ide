@@ -149,3 +149,4 @@ export const GET_MISSION_CONTROL_AGENT_ACTIVITY_CHANNEL =
   "desktop:get-mission-control-agent-activity";
 
 export const ROUTE_MISSION_CONTROL_ITEMS_CHANNEL = "desktop:route-mission-control-items";
+export const SEND_GROK_BOT_PROMPT_CHANNEL = "desktop:send-grok-bot-prompt";

@@ -10,6 +10,7 @@ import {
   MissionControlActionRequestSchema,
   MissionControlActionResultSchema,
   MissionControlReplyPreviewSchema,
+  GrokBotPromptResultSchema,
   missionControlPrioritySources,
   type MissionControlRequest,
   type MissionControlItem,
@@ -20,6 +21,8 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
 import * as DesktopEnvironment from "../../app/DesktopEnvironment.ts";
+import * as ElectronShell from "../../electron/ElectronShell.ts";
+import { macGrokBotSendDeps, sendGrokBotPrompt } from "../../missionControl/grokBotSend.ts";
 import {
   completeMissionControlIssue,
   completeMissionControlTask,
@@ -376,6 +379,24 @@ export const routeMissionControlItems = makeIpcMethod({
     return yield* Effect.promise(() =>
       routeItems(environment.homeDirectory, environment.baseDir, requests, jev),
     );
+  }),
+});
+
+export const sendGrokBotPromptMethod = makeIpcMethod({
+  channel: IpcChannels.SEND_GROK_BOT_PROMPT_CHANNEL,
+  payload: Schema.String,
+  result: GrokBotPromptResultSchema,
+  handler: Effect.fn("desktop.ipc.missionControl.sendGrokBotPrompt")(function* (link) {
+    const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    const shell = yield* ElectronShell.ElectronShell;
+    const runPromise = Effect.runPromiseWith(yield* Effect.context<never>());
+    const open = (url: string) => runPromise(shell.openExternal(url));
+    if (environment.platform !== "darwin") {
+      return (yield* Effect.promise(() => open(link)))
+        ? { outcome: "typed" as const, reason: "unsupported" as const }
+        : { outcome: "failed" as const, reason: "open-failed" as const };
+    }
+    return yield* Effect.promise(() => sendGrokBotPrompt(link, macGrokBotSendDeps(open)));
   }),
 });
 

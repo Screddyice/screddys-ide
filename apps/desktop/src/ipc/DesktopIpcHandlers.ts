@@ -7,6 +7,7 @@ import {
   getMissionControlJevStatus,
   setMissionControlJevKey,
   routeMissionControlItems,
+  sendGrokBotPromptMethod,
   runMissionControlAction,
 } from "./methods/missionControl.ts";
 
@@ -169,6 +170,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(setMissionControlJevKey);
   yield* ipc.handle(runMissionControlAction);
   yield* ipc.handle(routeMissionControlItems);
+  yield* ipc.handle(sendGrokBotPromptMethod);
   yield* ipc.handle(getMissionControlAgentActivity);
   yield* ipc.handle(openBlurtVoice);
   yield* ipc.handle(turnBlurtVoice);
