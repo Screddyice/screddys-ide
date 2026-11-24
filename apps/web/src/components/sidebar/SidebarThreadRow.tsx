@@ -541,7 +541,7 @@ function WorkingThreadRing() {
       aria-hidden
       data-thread-working
       ref={observeVisibleAnimation}
-      className="inline-block size-3.5 shrink-0 rounded-full border-2 border-sidebar-foreground/30 border-t-sidebar-foreground/80 border-r-sidebar-foreground/80 motion-safe:visible-animate-spin"
+      className="inline-block size-3.5 shrink-0 rounded-full border-2 border-info-foreground/30 border-t-info-foreground border-r-info-foreground motion-safe:visible-animate-spin"
     />
   );
 }

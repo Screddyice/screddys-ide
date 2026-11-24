@@ -75,7 +75,7 @@ Use **Split workspace** in a thread header to add a side-by-side pane. Each pane
 
 ## Thread status in the sidebar
 
-A thread that is setting up or working shows a spinning ring in the sidebar. Threads waiting on you or on another thread keep their own icons.
+A thread that is setting up or working shows a spinning blue ring in the sidebar, in the same blue the working icon used before. Threads waiting on you or on another thread keep their own icons.
 
 ## Upstream T3 Code documentation
 
