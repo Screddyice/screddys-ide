@@ -4,7 +4,7 @@ import { render } from "../../../test/render";
 import { SidebarProvider } from "../ui/sidebar";
 import { SidebarWorkspaceLinks } from "./SidebarChrome";
 
-it.each(["/", "/automations"])(
+it.each(["/", "/automations", "/settings/scheduled-tasks"])(
   "links Automations to its own page with every project and environment (at %s)",
   async (path) => {
     await using screen = await render(
@@ -15,7 +15,7 @@ it.each(["/", "/automations"])(
     );
     const automations = screen.getByRole("link", { name: "Automations" });
     await expect.element(automations).toHaveAttribute("href", "/automations");
-    if (path === "/automations") {
+    if (path !== "/") {
       await expect.element(automations).toHaveAttribute("data-active", "true");
     } else {
       await expect

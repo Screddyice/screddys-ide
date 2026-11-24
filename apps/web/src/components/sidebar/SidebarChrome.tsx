@@ -215,7 +215,7 @@ export function SidebarWorkspaceLinks({
       ) : null}
       <SidebarMenuItem>
         <SidebarMenuButton
-          isActive={pathname === "/automations"}
+          isActive={pathname === "/automations" || pathname === "/settings/scheduled-tasks"}
           render={
             <Link
               to="/automations"
