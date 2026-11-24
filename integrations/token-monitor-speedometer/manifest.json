@@ -2,7 +2,7 @@
   "tmApi": 1,
   "id": "screddy-speedometer",
   "name": "Screddy Token Speedometer",
-  "version": "1.6.4",
+  "version": "1.6.5",
   "ui": "speedometer.mjs",
   "backend": "activity.cjs",
   "css": ["speedometer.css"],

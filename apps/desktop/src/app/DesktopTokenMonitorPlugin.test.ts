@@ -1,3 +1,5 @@
+import * as NodeCrypto from "node:crypto";
+
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -157,6 +159,25 @@ it.layer(NodeServices.layer)("DesktopTokenMonitorPlugin", (it) => {
       expect(yield* fs.exists(staging)).toBe(false);
       expect(yield* fs.exists(aside)).toBe(false);
       expect(yield* fs.exists(theirs)).toBe(true);
+    }).pipe(Effect.scoped),
+  );
+
+  // Token Monitor refuses a package update that keeps the same version, so changed files
+  // need a new version. When this fails, bump manifest.json's version and record the hash.
+  it.effect("ships a new version whenever the plug-in's files change", () =>
+    Effect.gen(function* () {
+      const { fs, path, manifest } = yield* setup;
+      const released: Record<string, string> = {
+        "1.6.5": "ab1a10537fb16b3cdbcd089ec0e730242aa8413cc06eb4fd616d726fb221c42c",
+      };
+      const hash = NodeCrypto.createHash("sha256");
+      const { version: _version, ...rest } = manifest as Record<string, unknown>;
+      hash.update(JSON.stringify(rest));
+      for (const name of [...manifest.files].sort()) {
+        hash.update(name);
+        hash.update(yield* fs.readFile(path.join(bundleDir(path), name)));
+      }
+      expect(released[manifest.version]).toBe(hash.digest("hex"));
     }).pipe(Effect.scoped),
   );
 
