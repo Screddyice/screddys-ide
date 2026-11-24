@@ -134,16 +134,14 @@ export const claudeUsageDirectories = Effect.fn("claudeUsageReader.directories")
   const path = yield* Path.Path;
   const homeDirectory = yield* HostProcess.HomeDirectory;
   const configured = config.homePath.trim();
-  if (configured) {
-    return [{ dir: path.resolve(expandHomePath(configured, homeDirectory), "projects") }];
-  }
-  // Usage belongs to the user, not to whichever profile this server was started with,
-  // so count every Claude profile on the machine. Records dedupe by message id.
+  // Usage belongs to the user, not to whichever profile a chat runs on, so a dedicated home
+  // adds to every Claude profile on the machine. Directories and records dedupe across instances.
   const siblings = yield* fs.readDirectory(homeDirectory).pipe(
     Effect.map((names) => names.filter((name) => name.startsWith(".claude-"))),
     Effect.orElseSucceed((): ReadonlyArray<string> => []),
   );
   const homes = [
+    configured ? expandHomePath(configured, homeDirectory) : undefined,
     environment.CLAUDE_CONFIG_DIR?.trim() || undefined,
     path.join(homeDirectory, ".claude"),
     ...siblings.map((name) => path.join(homeDirectory, name)),
