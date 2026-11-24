@@ -269,12 +269,17 @@
 
 .screddy-speedometer-scale > span {
   padding: 0 3px;
-  background: #161b17;
+  /* No box behind the digits: where the fill crossed one it showed as a black slab.
+     A soft halo in the track colour keeps them readable over the tick marks. */
+  text-shadow:
+    0 0 2px #161b17,
+    0 0 4px #161b17,
+    0 0 6px #161b17;
 }
 
 .screddy-speedometer-scale > .is-filled {
   color: #071c10;
-  background: transparent;
+  text-shadow: none;
 }
 
 .screddy-speedometer-speed {
