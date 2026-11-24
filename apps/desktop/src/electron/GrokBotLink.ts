@@ -1,5 +1,4 @@
-// Grok Bot caps prefilled prompt text at 1,000 characters.
-const GROK_BOT_PROMPT_MAX_LENGTH = 1000;
+import { isGrokBotPromptLink } from "@t3tools/shared/grokBotPrompt";
 
 function hasGrokBotId(url: URL): boolean {
   return (
@@ -17,14 +16,7 @@ export function isGrokBotConversationUrl(url: URL): boolean {
 }
 
 // A prompt link only fills the named bot's message box; Grok Bot asks before filling it and
-// the user still presses Send. Accept exactly id + text, never extra flags.
+// the user still presses Send. Accept exactly id + text, and only text Grok Bot itself accepts.
 export function isGrokBotPromptUrl(url: URL): boolean {
-  const text = url.searchParams.get("text") ?? "";
-  return (
-    hasGrokBotId(url) &&
-    url.pathname === "/v1/prompt" &&
-    url.searchParams.size === 2 &&
-    text.trim().length > 0 &&
-    [...text].length <= GROK_BOT_PROMPT_MAX_LENGTH
-  );
+  return hasGrokBotId(url) && isGrokBotPromptLink(url.href);
 }

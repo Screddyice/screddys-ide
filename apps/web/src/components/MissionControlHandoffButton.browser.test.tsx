@@ -10,6 +10,7 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import { BearerConnectionTarget } from "@t3tools/client-runtime/connection";
+import { isGrokBotPromptLink } from "@t3tools/shared/grokBotPrompt";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { describe, expect, it, vi } from "vite-plus/test";
 import * as Option from "effect/Option";
@@ -422,6 +423,9 @@ it("opens the named assistant with the task typed into its message box", async (
   const text = opened.searchParams.get("text") ?? "";
   expect(text).toContain("Help me tackle this Mission Control task.");
   expect(text).toContain(JSON.stringify(item.title));
+  // Grok Bot drops the whole link when the text has a line break, leaving the box empty.
+  expect(text).not.toMatch(/[\r\n\t]/);
+  expect(isGrokBotPromptLink(opened.href)).toBe(true);
   expect(clip).not.toHaveBeenCalled();
   expect(calls.start).not.toHaveBeenCalled();
 });
@@ -438,6 +442,7 @@ describe("grokBotPromptUrl", () => {
     expect(text.startsWith("Reply to Ana ")).toBe(true);
     expect([...text].length).toBe(1000);
     expect(text).not.toMatch(/[\u200b\u202e]/);
+    expect(isGrokBotPromptLink(href!)).toBe(true);
   });
 
   it("refuses anything but a bot conversation link", () => {

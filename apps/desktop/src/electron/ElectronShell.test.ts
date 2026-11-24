@@ -71,12 +71,27 @@ describe("ElectronShell", () => {
             "grokbot://app/v1/prompt?id=bot&text=hi#send",
             "grokbot://app/v1/prompt?id=bot&text=%20",
             "grokbot://app/v1/prompt?id=bot&text=" + "a".repeat(1001),
+            // Grok Bot refuses line breaks and links over 2,048 characters, so these never open.
+            "grokbot://app/v1/prompt?id=bot&text=Task%0ASource",
+            "grokbot://app/v1/prompt?id=bot&text=" + "%C3%A9".repeat(400),
             "grokbot://",
           ],
           (url) => electronShell.openExternal(url),
         );
 
-        assert.deepEqual(results, [true, true, true, false, false, false, false, false, false]);
+        assert.deepEqual(results, [
+          true,
+          true,
+          true,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+        ]);
         assert.deepEqual(openExternalMock.mock.calls, [
           ["grokbot://app"],
           ["grokbot://app/v1/agent?id=bot"],

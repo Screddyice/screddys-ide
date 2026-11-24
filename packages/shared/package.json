@@ -395,6 +395,10 @@
       "types": "./src/usageLimits.ts",
       "import": "./src/usageLimits.ts"
     },
+    "./grokBotPrompt": {
+      "types": "./src/grokBotPrompt.ts",
+      "import": "./src/grokBotPrompt.ts"
+    },
     "./desktopAppControl": {
       "types": "./src/desktopAppControl.ts",
       "import": "./src/desktopAppControl.ts"
