@@ -34,7 +34,7 @@ If a background service (for example a launchd agent with `KeepAlive`) keeps a s
 
 ## Continuous integration
 
-Crow CI on Shawn's Mac runs `.woodpecker.yaml` on every push and pull request: the same Mission Control and chat tests as the GitHub **Verify Screddy changes** job, on Node 26.12.1 in a Linux arm64 container. On a pull request, the GitHub job's `crow-gate` step waits up to 3 minutes for a `ci/crow/...` status. If one appears, GitHub skips its own run and the Crow result is the merge check. If none appears (the Mac was asleep or offline), GitHub runs the job as before. Packaging runs started by hand are never gated. If Crow fails for its own reasons rather than a failing check (the clone drops, the run is killed or times out, or Crow can't be reached), the **Crow fallback** workflow reads the run from Crow's API and starts the GitHub verification on the PR head, so the PR still gets a real result. A failed check step does not trigger it. The workflow needs a `CROW_TOKEN` repository secret; without it every Crow failure is treated as Crow's own. A manual run of **Package Screddy for Apple Silicon** with no version does only that verification.
+Crow CI on Shawn's Mac runs `.woodpecker.yaml` on every push and pull request: the Mission Control and chat tests, on Node 26.12.1 in a Linux arm64 container. The GitHub **Verify Screddy changes** job runs the same tests on every pull request, independently of Crow. A push made while the Mac is asleep or offline gets no Crow run.
 
 ## Build a preview from main
 
