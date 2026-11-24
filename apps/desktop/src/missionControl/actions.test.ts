@@ -6,6 +6,7 @@ import { expect, it, vi } from "vite-plus/test";
 
 import {
   completeMissionControlIssue,
+  completeMissionControlTask,
   previewMissionControlReply,
   sendMissionControlReply,
 } from "./actions.ts";
@@ -172,4 +173,44 @@ it("updates only the selected assigned issue to that team's completed status", a
     ok: true,
   });
   expect(completeLinearIssue).toHaveBeenCalledTimes(1);
+});
+
+it("completes an open Google Task once and confirms the saved status", async () => {
+  const list = "MTgxNjU4MDY0MTQ4NzUxNTk5NzM6MDow";
+  const task = "dGFzay1pZC0xMjM0NQ";
+  const googleTask = vi.fn<Connector["googleTask"]>(async () => ({
+    id: task,
+    status: "needsAction",
+  }));
+  const completeGoogleTask = vi.fn<Connector["completeGoogleTask"]>(async () => ({
+    id: task,
+    status: "completed",
+  }));
+  const api = { googleTask, completeGoogleTask } as unknown as Connector;
+  const withTasks = { ...bindings, tasks: "tasks-account" };
+  const itemId = `tasks:${list}:${task}`;
+
+  await expect(completeMissionControlTask(api, withTasks, itemId)).resolves.toEqual({
+    ok: true,
+    message: "Marked complete in Google Tasks.",
+  });
+  expect(completeGoogleTask).toHaveBeenCalledExactlyOnceWith("tasks-account", list, task);
+
+  googleTask.mockResolvedValue({ id: task, status: "completed" });
+  await expect(completeMissionControlTask(api, withTasks, itemId)).resolves.toMatchObject({
+    message: "Already complete in Google Tasks.",
+  });
+  expect(completeGoogleTask).toHaveBeenCalledTimes(1);
+
+  googleTask.mockResolvedValue({ id: task, status: "needsAction" });
+  completeGoogleTask.mockResolvedValue({ id: task, status: "needsAction" });
+  await expect(completeMissionControlTask(api, withTasks, itemId)).rejects.toThrow(
+    /did not confirm/,
+  );
+  googleTask.mockResolvedValue({ id: "another", status: "needsAction" });
+  await expect(completeMissionControlTask(api, withTasks, itemId)).rejects.toThrow(/no longer/);
+  await expect(completeMissionControlTask(api, bindings, itemId)).rejects.toThrow(/configured/);
+  await expect(completeMissionControlTask(api, withTasks, "tasks:../x:" + task)).rejects.toThrow(
+    /configured/,
+  );
 });

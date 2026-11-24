@@ -27,6 +27,7 @@ function actionError(message: string) {
 
 const gmailItemId = /^gmail:([a-zA-Z][\w -]{0,31}):([a-f0-9]{8,32})$/i;
 const linearItemId = /^linear:([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})$/i;
+const taskItemId = /^tasks:([\w-]{1,64}):([\w-]{1,64})$/;
 const linearStateId = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 const mailbox =
   /^[A-Za-z0-9.!#$%&'*+/=?^_{}|~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z0-9-]+$/;
@@ -281,4 +282,29 @@ export async function completeMissionControlIssue(
     }
   }
   return { ok: true as const, message: "Marked complete in Linear." };
+}
+
+export async function completeMissionControlTask(
+  api: Connector,
+  bindings: Bindings,
+  itemId: string,
+) {
+  const [, list, task] = taskItemId.exec(itemId) ?? [];
+  if (!list || !task || !bindings.tasks) {
+    throw actionError("This item is not a configured Google Task.");
+  }
+  const current = await api.googleTask(bindings.tasks, list, task).catch(() => null);
+  if (current?.id !== task) throw actionError("This task is no longer in Google Tasks.");
+  if (current.status === "completed") {
+    return { ok: true as const, message: "Already complete in Google Tasks." };
+  }
+  const updated = await api.completeGoogleTask(bindings.tasks, list, task).catch(() => null);
+  if (updated?.id !== task || updated.status !== "completed") {
+    // A lost response must not read as a failure when the task was in fact completed.
+    const check = await api.googleTask(bindings.tasks, list, task).catch(() => null);
+    if (check?.id !== task || check.status !== "completed") {
+      throw actionError("Google Tasks did not confirm completion. Check the task in Google Tasks.");
+    }
+  }
+  return { ok: true as const, message: "Marked complete in Google Tasks." };
 }
