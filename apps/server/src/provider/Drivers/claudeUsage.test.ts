@@ -235,7 +235,7 @@ describe("claudeUsageDirectories", () => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3-claude-usage-" });
-      for (const profile of [".claude", ".claude-work", "team/claude"]) {
+      for (const profile of [".claude", ".claude-work", "team/claude", "work/claude"]) {
         yield* fs.makeDirectory(`${home}/${profile}/projects`, { recursive: true });
       }
       yield* fs.makeDirectory(`${home}/.claude-empty`, { recursive: true });
@@ -261,12 +261,17 @@ describe("claudeUsageDirectories", () => {
     }),
   );
 
-  it.effect("reads only the configured home of a dedicated instance", () =>
+  it.effect("adds a dedicated instance's home to every other Claude profile", () =>
     Effect.gen(function* () {
-      const { dirs } = yield* directoriesFor("~/.claude-work", (home) => ({
+      const { dirs } = yield* directoriesFor("~/work/claude", (home) => ({
         CLAUDE_CONFIG_DIR: `${home}/team/claude`,
       }));
-      expect(dirs).toEqual(["/.claude-work/projects"]);
+      expect(dirs).toEqual([
+        "/.claude-work/projects",
+        "/.claude/projects",
+        "/team/claude/projects",
+        "/work/claude/projects",
+      ]);
     }),
   );
 });
