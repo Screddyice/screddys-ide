@@ -1,6 +1,12 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
+import { ClaudeSettings, ProviderInstanceId } from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Schema from "effect/Schema";
 
-import { claudeUsageFormat, parseClaudeLine } from "./claudeUsage.ts";
+import { claudeUsageDirectories, claudeUsageFormat, parseClaudeLine } from "./claudeUsage.ts";
 
 function claudeLine(overrides: {
   messageId: string;
@@ -215,4 +221,52 @@ describe("Claude advisor iterations", () => {
 
     expect(parse(unusable).map((record) => record.model)).toEqual(["claude-opus-5-5"]);
   });
+});
+
+describe("claudeUsageDirectories", () => {
+  const decodeSettings = Schema.decodeUnknownSync(ClaudeSettings);
+  const instance = (homePath: string, environment: NodeJS.ProcessEnv) => ({
+    instanceId: ProviderInstanceId.make("claudeAgent"),
+    config: decodeSettings({ homePath }),
+    environment,
+    configured: true,
+  });
+  const directoriesFor = (homePath: string, environment: (home: string) => NodeJS.ProcessEnv) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "t3-claude-usage-" });
+      for (const profile of [".claude", ".claude-work", "team/claude"]) {
+        yield* fs.makeDirectory(`${home}/${profile}/projects`, { recursive: true });
+      }
+      yield* fs.makeDirectory(`${home}/.claude-empty`, { recursive: true });
+      const directories = yield* claudeUsageDirectories(instance(homePath, environment(home))).pipe(
+        Effect.provideService(HostProcess.HomeDirectory, home),
+      );
+      return {
+        home,
+        dirs: directories.map(({ dir }) => dir.slice(home.length)).toSorted(),
+      };
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+
+  it.effect("counts every Claude profile when the instance has no home of its own", () =>
+    Effect.gen(function* () {
+      const { dirs } = yield* directoriesFor("", (home) => ({
+        CLAUDE_CONFIG_DIR: `${home}/team/claude`,
+      }));
+      expect(dirs).toEqual([
+        "/.claude-work/projects",
+        "/.claude/projects",
+        "/team/claude/projects",
+      ]);
+    }),
+  );
+
+  it.effect("reads only the configured home of a dedicated instance", () =>
+    Effect.gen(function* () {
+      const { dirs } = yield* directoriesFor("~/.claude-work", (home) => ({
+        CLAUDE_CONFIG_DIR: `${home}/team/claude`,
+      }));
+      expect(dirs).toEqual(["/.claude-work/projects"]);
+    }),
+  );
 });
