@@ -202,8 +202,9 @@ it("filters the cross-source queue and pages through mail for the selected accou
       },
     ],
     sources: [
-      { source: "tasks", account: "Personal", state: "ready", detail: "" },
-      { source: "srcos", account: "Personal", state: "partial", detail: "" },
+      { source: "tasks", account: "Personal", state: "unavailable", detail: "Sign in again." },
+      { source: "tasks", account: "Shared", state: "ready", detail: "" },
+      { source: "srcos", account: "Personal", state: "unavailable", detail: "" },
       { source: "linear", account: "Example workspace", state: "ready", detail: "" },
     ],
     context: "Example workspace guidance",
@@ -235,10 +236,14 @@ it("filters the cross-source queue and pages through mail for the selected accou
     await expect.element(screen.getByText("Personal deadline")).toBeVisible();
     await expect.element(screen.getByText("Team issue")).not.toBeInTheDocument();
     await expect.element(screen.getByText("SRCOS follow-up")).not.toBeInTheDocument();
-    await screen.getByText("Sources", { exact: true }).click();
+    await screen.getByText("Sources · 1 unavailable", { exact: true }).click();
     await expect
       .element(screen.getByText("Google Tasks · Personal", { exact: true }))
       .toBeVisible();
+    await expect.element(screen.getByText("Sign in again.", { exact: false })).toBeVisible();
+    await expect
+      .element(screen.getByText("Google Tasks · Shared", { exact: true }))
+      .not.toBeInTheDocument();
     await expect
       .element(screen.getByText("SRCOS · Personal", { exact: true }))
       .not.toBeInTheDocument();

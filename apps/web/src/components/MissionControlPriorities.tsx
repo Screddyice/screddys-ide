@@ -113,25 +113,17 @@ function ItemRow({
 }
 
 function Sources({ sources }: { sources: MissionControlResponse["sources"] }) {
-  if (!sources.length) return null;
+  const unavailable = sources.filter((source) => source.state === "unavailable");
+  if (!unavailable.length) return null;
   return (
     <details className="rounded-lg border border-border px-4 py-3 text-sm">
-      <summary className="cursor-pointer">
-        Sources
-        {sources.some((source) => source.state !== "ready") && " · Some coverage is limited"}
-      </summary>
+      <summary className="cursor-pointer">Sources · {unavailable.length} unavailable</summary>
       <ul className="mt-3 space-y-2 text-xs text-muted-foreground">
-        {sources.map((source) => (
+        {unavailable.map((source) => (
           <li key={`${source.source}:${source.account}`}>
             <span className="font-medium text-foreground">
               {labels[source.source]} · {source.account}
             </span>
-            {" · "}
-            {source.state === "ready"
-              ? "Connected"
-              : source.state === "partial"
-                ? "Partial coverage"
-                : "Unavailable"}
             {source.detail && ` · ${source.detail}`}
           </li>
         ))}
