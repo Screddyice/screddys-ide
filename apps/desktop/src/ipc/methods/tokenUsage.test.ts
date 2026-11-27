@@ -38,10 +38,13 @@ describe("usageTrayTooltip", () => {
 });
 
 describe("usageTrayTitle", () => {
-  it("shows only today's total beside the logo, and nothing until usage loads", () => {
+  it("shows today's total beside the logo, then the throughput once it is measured", () => {
     expect(usageTrayTitle({ loading: true, summary: null })).toBe("");
     expect(usageTrayTitle({ loading: false, summary: summary() })).toBe("2.73B");
-    expect(usageTrayTitle({ loading: false, summary: summary(1_200_000) })).toBe("2.73B");
+    expect(usageTrayTitle({ loading: false, summary: summary(1_200_000) })).toBe(
+      "2.73B · 1.20M/min",
+    );
+    expect(usageTrayTitle({ loading: false, summary: summary(0) })).toBe("2.73B · 0/min");
   });
 });
 
