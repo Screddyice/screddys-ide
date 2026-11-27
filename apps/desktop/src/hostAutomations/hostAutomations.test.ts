@@ -1,0 +1,222 @@
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  codexAutomation,
+  commandLine,
+  cronAutomations,
+  launchdAutomation,
+  parseDisabled,
+  parseLaunchctlList,
+} from "./hostAutomations.ts";
+
+const none = new Map<string, { pid: number | null; status: number }>();
+const agent = (
+  plist: Record<string, unknown>,
+  loaded: ReadonlyMap<string, { pid: number | null; status: number }> = none,
+  disabled: ReadonlySet<string> = new Set(),
+) =>
+  launchdAutomation({
+    plist,
+    path: "/opt/example/LaunchAgents/job.plist",
+    scope: "user",
+    daemon: false,
+    loaded,
+    disabled,
+  });
+
+describe("launchdAutomation", () => {
+  it("describes calendar schedules and the script they run", () => {
+    const job = agent(
+      {
+        Label: "com.example.weekly",
+        ProgramArguments: ["/bin/bash", "/opt/example/weekly.sh"],
+        StartCalendarInterval: { Weekday: 0, Hour: 3, Minute: 0 },
+      },
+      new Map([["com.example.weekly", { pid: null, status: 0 }]]),
+    );
+    expect(job).toEqual({
+      id: "launchd:user:com.example.weekly",
+      source: "launchd",
+      scope: "user",
+      name: "com.example.weekly",
+      kind: "scheduled",
+      schedule: "Sundays at 03:00",
+      command: "/bin/bash /opt/example/weekly.sh",
+      path: "/opt/example/LaunchAgents/job.plist",
+      state: "idle",
+    });
+    const schedule = (StartCalendarInterval: unknown) =>
+      agent({ Label: "x", Program: "/opt/x", StartCalendarInterval })?.schedule;
+    expect(schedule({ Hour: 8, Minute: 5 })).toBe("Daily at 08:05");
+    expect(schedule({ Minute: 30 })).toBe("Hourly at :30");
+    expect(schedule({ Day: 1, Hour: 9, Minute: 0 })).toBe("Monthly on day 1 at 09:00");
+    expect(
+      schedule([
+        { Hour: 8, Minute: 0 },
+        { Hour: 20, Minute: 0 },
+      ]),
+    ).toBe("Daily at 08:00; Daily at 20:00");
+  });
+
+  it("describes intervals", () => {
+    const every = (StartInterval: number) =>
+      agent({ Label: "x", Program: "/opt/x", StartInterval })?.schedule;
+    expect(every(60)).toBe("Every minute");
+    expect(every(90)).toBe("Every 90 seconds");
+    expect(every(300)).toBe("Every 5 minutes");
+    expect(every(3600)).toBe("Every hour");
+    expect(every(21_600)).toBe("Every 6 hours");
+  });
+
+  it("marks background and login jobs with their run state", () => {
+    const loaded = new Map([
+      ["com.example.server", { pid: 123, status: 0 }],
+      ["com.example.login", { pid: null, status: 78 }],
+    ]);
+    expect(
+      agent(
+        { Label: "com.example.server", Program: "/opt/s", KeepAlive: true, RunAtLoad: true },
+        loaded,
+      ),
+    ).toMatchObject({
+      kind: "background",
+      schedule: "Always running",
+      state: "running",
+      detail: "PID 123",
+    });
+    expect(
+      agent({ Label: "com.example.login", Program: "/opt/l", RunAtLoad: true }, loaded),
+    ).toMatchObject({
+      kind: "login",
+      schedule: "At login",
+      state: "failed",
+      detail: "Last exit 78",
+    });
+    expect(agent({ Label: "com.example.helper", Program: "/opt/h" })).toMatchObject({
+      kind: "on-demand",
+      schedule: "When something asks for it",
+      state: "not-loaded",
+    });
+  });
+
+  it("reports disabled jobs, system daemons and skips files without a label", () => {
+    expect(agent({ Label: "a", Program: "/opt/a", Disabled: true })?.state).toBe("disabled");
+    expect(agent({ Label: "b", Program: "/opt/b" }, none, new Set(["b"]))?.state).toBe("disabled");
+    expect(
+      launchdAutomation({
+        plist: { Label: "com.vendor.daemon", Program: "/opt/d", StartInterval: 3600 },
+        path: "/opt/example/LaunchDaemons/d.plist",
+        scope: "system",
+        daemon: true,
+        loaded: none,
+        disabled: new Set(),
+      }),
+    ).toMatchObject({ id: "launchd:system:com.vendor.daemon", scope: "system", state: "unknown" });
+    expect(agent({ Program: "/opt/x" })).toBeNull();
+  });
+});
+
+describe("commandLine", () => {
+  it("hides values that look like secrets and caps the length", () => {
+    expect(
+      commandLine([
+        "node",
+        "server.js",
+        "--api-key",
+        "sk-123",
+        "TOKEN=abc",
+        "--password=hunter2",
+        "--port",
+        "3774",
+      ]),
+    ).toBe("node server.js --api-key [hidden] TOKEN=[hidden] --password=[hidden] --port 3774");
+    const long = commandLine(["/opt/run", "x".repeat(400)]);
+    expect(long.length).toBeLessThanOrEqual(240);
+    expect(long.endsWith("…")).toBe(true);
+  });
+});
+
+describe("launchctl output", () => {
+  it("reads the job list and the disabled list", () => {
+    expect(parseLaunchctlList("PID\tStatus\tLabel\n123\t0\tcom.a\n-\t78\tcom.b\n")).toEqual(
+      new Map([
+        ["com.a", { pid: 123, status: 0 }],
+        ["com.b", { pid: null, status: 78 }],
+      ]),
+    );
+    expect(
+      parseDisabled(
+        'disabled services = {\n\t"com.a" => disabled\n\t"com.b" => enabled\n\t"com.c" => true\n}\n',
+      ),
+    ).toEqual(new Set(["com.a", "com.c"]));
+  });
+});
+
+describe("cronAutomations", () => {
+  it("lists each job line with a readable schedule", () => {
+    const jobs = cronAutomations(
+      [
+        "PATH=/usr/bin:/bin",
+        "# nightly",
+        "*/15 * * * * /opt/example/poll.sh",
+        "0 3 * * 0 /opt/example/weekly.sh --secret abc",
+        "@reboot /opt/example/start.sh",
+        "30 2 1 * * /opt/example/monthly.sh",
+        "5 4 * * 1-5 /opt/example/weekdays.sh",
+        `0 6 * * * /opt/example/send.sh --api-key "two words" API_TOKEN='x y' --port 1`,
+        "",
+      ].join("\n"),
+    );
+    expect(jobs.map(({ kind, schedule, command }) => [kind, schedule, command])).toEqual([
+      ["scheduled", "Every 15 minutes", "/opt/example/poll.sh"],
+      ["scheduled", "Sundays at 03:00", "/opt/example/weekly.sh --secret [hidden]"],
+      ["login", "At startup", "/opt/example/start.sh"],
+      ["scheduled", "Monthly on day 1 at 02:30", "/opt/example/monthly.sh"],
+      ["scheduled", "Cron 5 4 * * 1-5", "/opt/example/weekdays.sh"],
+      [
+        "scheduled",
+        "Daily at 06:00",
+        "/opt/example/send.sh --api-key [hidden] API_TOKEN=[hidden] --port 1",
+      ],
+    ]);
+    expect(jobs[0]).toMatchObject({
+      source: "cron",
+      scope: "user",
+      path: "crontab",
+      state: "idle",
+    });
+    expect(new Set(jobs.map(({ id }) => id)).size).toBe(jobs.length);
+  });
+});
+
+describe("codexAutomation", () => {
+  it("reads a Codex automation's name, status and schedule", () => {
+    const toml = (status: string, rrule: string) =>
+      `version = 1\nid = "daily-email"\nkind = "heartbeat"\nname = "Daily Email"\nstatus = "${status}"\nrrule = "${rrule}"\n`;
+    expect(
+      codexAutomation(
+        toml("PAUSED", "FREQ=DAILY;BYHOUR=8;BYMINUTE=0;BYSECOND=0"),
+        "/opt/example/a.toml",
+      ),
+    ).toEqual({
+      id: "codex:daily-email",
+      source: "codex",
+      scope: "user",
+      name: "Daily Email",
+      kind: "scheduled",
+      schedule: "Daily at 08:00",
+      command: null,
+      path: "/opt/example/a.toml",
+      state: "paused",
+    });
+    const schedule = (rrule: string) => codexAutomation(toml("ACTIVE", rrule), "/opt/a")?.schedule;
+    expect(schedule("FREQ=WEEKLY;BYDAY=MO,WE;BYHOUR=9;BYMINUTE=30")).toBe(
+      "Mondays, Wednesdays at 09:30",
+    );
+    expect(schedule("FREQ=HOURLY;INTERVAL=2")).toBe("Every 2 hours");
+    expect(schedule("FREQ=MINUTELY;INTERVAL=30")).toBe("Every 30 minutes");
+    expect(schedule("FREQ=YEARLY;BYMONTH=1")).toBe("FREQ=YEARLY;BYMONTH=1");
+    expect(codexAutomation(toml("ACTIVE", "FREQ=DAILY"), "/opt/a")?.state).toBe("idle");
+    expect(codexAutomation('version = 1\nname = "No id"\n', "/opt/a")).toBeNull();
+  });
+});
