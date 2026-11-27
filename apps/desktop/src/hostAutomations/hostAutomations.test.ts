@@ -207,6 +207,15 @@ describe("cronAutomations", () => {
     );
   });
 
+  it("hides a secret nested in another parameter's URL", () => {
+    const [job] = cronAutomations(
+      "0 1 * * * open https://example.test/?next=https://other.test/?token=abc&id=4\n",
+    );
+    expect(job?.command).toBe(
+      "open https://example.test/?next=https://other.test/?token=[hidden]&id=4",
+    );
+  });
+
   it("compares query parameter names after URL decoding", () => {
     const [job] = cronAutomations(
       "*/5 * * * * curl https://example.test/hook?%74oken=abc123&ok=1&%6Bey=k2\n",

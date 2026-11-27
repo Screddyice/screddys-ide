@@ -37,8 +37,9 @@ const secretFlagInText = new RegExp(
   "gi",
 );
 const secretName = new RegExp(SECRET, "i");
-// Every URL query parameter, as in ?token=… or &api_key=…; only the value is ever hidden.
-const queryParam = /([?&])([^=&#\s"']+)=([^&#\s"']*)/g;
+// A URL query parameter's name, as in ?token= or &api_key=, and the value that follows it.
+const QUERY_NAME = /[?&]([^=&#?\s"']+)=/g;
+const QUERY_VALUE = /[^&#\s"']*/y;
 
 function decodedName(name: string): string {
   try {
@@ -48,11 +49,25 @@ function decodedName(name: string): string {
   }
 }
 
-/** Hides a query value whose name, once URL-decoded (so %74oken is token), looks like a secret. */
+/**
+ * Hides a query value whose name, once URL-decoded (so %74oken is token), looks like a secret.
+ * Other values are scanned too, so a URL nested in one (?next=…?token=…) is still covered.
+ */
 function hideSecretQueryValues(text: string): string {
-  return text.replace(queryParam, (whole, separator: string, name: string) =>
-    secretName.test(decodedName(name)) ? `${separator}${name}=[hidden]` : whole,
-  );
+  const names = new RegExp(QUERY_NAME);
+  const value = new RegExp(QUERY_VALUE);
+  let shown = "";
+  let copied = 0;
+  for (let match = names.exec(text); match; match = names.exec(text)) {
+    if (!secretName.test(decodedName(match[1]!))) continue;
+    const valueStart = match.index + match[0].length;
+    value.lastIndex = valueStart;
+    const valueEnd = valueStart + (value.exec(text)?.[0].length ?? 0);
+    shown += `${text.slice(copied, valueStart)}[hidden]`;
+    copied = valueEnd;
+    names.lastIndex = valueEnd;
+  }
+  return shown + text.slice(copied);
 }
 // The name may start with the secret word itself, as in TOKEN=…
 const secretAssignmentInText = new RegExp(
