@@ -64,6 +64,7 @@ jobs:
           pnpm --filter @t3tools/web exec vp test run --project browser \
             src/components/MissionControlHandoffButton.browser.test.tsx \
             src/components/MissionControlPriorities.browser.test.tsx \
+            src/components/settings/HostAutomationsSection.browser.test.tsx \
             src/components/onboarding/WelcomePage.import.browser.test.tsx \
             src/components/ChatView.modelPick.browser.test.tsx \
             src/components/ChatView.splitComposer.browser.test.tsx \

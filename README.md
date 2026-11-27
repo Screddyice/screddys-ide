@@ -36,7 +36,7 @@ Mission Control routes and prioritizes tasks locally by default. Enter your own 
 
 **Automations** in the sidebar, under Mission Control, opens its own page listing every scheduled task across all projects and environments. Use the scope picker at the top to narrow it to one project or environment. The same list is still under **Settings → Automations**.
 
-On macOS the desktop app can also read every job this Mac runs on its own: launchd jobs (your launch agents and the system-wide agents and daemons, through `plutil` and `launchctl`), `crontab -l` lines and Codex automations in `~/.codex/automations`. For each it reports the schedule in plain words, whether it runs on a timer, stays running, starts at login or runs on demand, the command or script with the value after a flag such as `--token` hidden, and its state (running, ready, failed with its exit code, paused, disabled or not loaded). Reading changes nothing.
+On macOS the desktop app can also read every job this Mac runs on its own: launchd jobs (your launch agents and the system-wide agents and daemons, through `plutil` and `launchctl`), `crontab -l` lines and Codex automations in `~/.codex/automations`. For each it reports the schedule in plain words, whether it runs on a timer, stays running, starts at login or runs on demand, the command or script with the value after a flag such as `--token` hidden, and its state (running, ready, failed with its exit code, paused, disabled or not loaded). Reading changes nothing. These jobs show under **On this Mac** on the Automations page and in **Settings → Automations**, grouped into scheduled, always running, at login and on demand; **Refresh** reads them again.
 
 ## Token usage across Claude profiles
 
