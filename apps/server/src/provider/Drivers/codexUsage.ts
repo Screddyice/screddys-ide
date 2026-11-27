@@ -490,4 +490,5 @@ export const codexUsageReader: ProviderUsageReader<
     );
     return [{ dir: path.resolve(layout.sharedHomePath, "sessions") }];
   }),
+  accountFolder: { dir: "sessions" },
 };

@@ -161,4 +161,5 @@ export const claudeUsageReader: ProviderUsageReader<
   provider: "claude",
   format: claudeUsageFormat,
   directories: claudeUsageDirectories,
+  accountFolder: { dir: "projects" },
 };

@@ -925,6 +925,19 @@ export const UsageLimitSourceConfig = Schema.Struct({
 });
 export type UsageLimitSourceConfig = typeof UsageLimitSourceConfig.Type;
 
+/** Providers whose transcripts live in a home folder that Settings → Usage accounts can add. */
+export const UsageAccountProvider = Schema.Literals(["claude", "codex", "grok"]);
+export type UsageAccountProvider = typeof UsageAccountProvider.Type;
+
+/** A home folder (for example a second CLAUDE_CONFIG_DIR) whose usage counts toward the totals. */
+export const UsageAccountConfig = Schema.Struct({
+  provider: UsageAccountProvider,
+  label: TrimmedNonEmptyString,
+  homePath: TrimmedNonEmptyString,
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+});
+export type UsageAccountConfig = typeof UsageAccountConfig.Type;
+
 export const TextGeneratorKind = Schema.Literals(["openaiCompatible", "anthropic"]);
 export type TextGeneratorKind = typeof TextGeneratorKind.Type;
 
@@ -1564,6 +1577,11 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
 
+  // Keyed by a client-chosen id so edits keep their row.
+  usageAccounts: Schema.Record(TrimmedNonEmptyString, UsageAccountConfig).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
+
   /** Sent by the Usage tab with each summary request to this environment; edit in settings.json. Invalid values are ignored. */
   usageModelFilter: ForwardCompatibleOptional(UsageModelFilter),
 });
@@ -1945,6 +1963,11 @@ export const ServerSettingsPatch = Schema.Struct({
 
   usageModelAliases: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, Schema.NullOr(TrimmedNonEmptyString)),
+  ),
+
+  // Merge per entry like usageLimitSources; null removes an entry.
+  usageAccounts: Schema.optionalKey(
+    Schema.Record(TrimmedNonEmptyString, Schema.NullOr(UsageAccountConfig)),
   ),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
