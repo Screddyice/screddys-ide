@@ -52,7 +52,7 @@ pnpm exec node scripts/build-desktop-artifact.ts --platform mac --target dmg --a
 
 The optional `.env` step includes the upstream public T3 Connect configuration. The local build uses its own app bundle and stores server data in `~/.screddys-ide/userdata` and its macOS browser profile in `~/Library/Application Support/screddys-ide-v2`. Development uses `~/.screddys-ide-dev` by default. To run from source, use `pnpm run dev:desktop --no-seed`.
 
-If a background service (for example a launchd agent with `KeepAlive`) keeps a server running for `~/.screddys-ide` after you quit, the next launch of an updated app stops that server once it finds it's running a different version. The service then starts the installed version, so you no longer need to kill the old server by hand. The app only stops the process its own server entry point started, so other programs are never touched.
+If a background service (for example a launchd agent with `KeepAlive`) keeps a server running for `~/.screddys-ide` after you quit, opening the app takes over from it, whatever version it runs: the app stops that server, waits for it to exit, and starts its own. If the service restarts its server first and takes the data folder back, the app stops it again and retries, up to four times, before it shows "This T3 home is unavailable". The service starts its server again after you quit the app, on the installed version, so you no longer need to stop it by hand. The app only stops a process its own server entry point started; a server from any other program or install (such as the stock `t3` service) is never touched and still gets that message.
 
 ## Continuous integration
 

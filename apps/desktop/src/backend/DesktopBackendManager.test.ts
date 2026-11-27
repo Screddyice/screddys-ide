@@ -634,6 +634,47 @@ describe("DesktopBackendManager", () => {
     ),
   );
 
+  it.effect("starts again when the ownership handler forks a restart after taking over", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        let startCount = 0;
+        const secondStart = yield* Deferred.make<void>();
+        let instanceRef: DesktopBackendManager.DesktopBackendInstance | undefined;
+        const instance = yield* makeTestInstance({
+          spawnerLayer: Layer.succeed(
+            ChildProcessSpawner.ChildProcessSpawner,
+            ChildProcessSpawner.make(() =>
+              Effect.gen(function* () {
+                startCount += 1;
+                if (startCount === 2) yield* Deferred.succeed(secondStart, undefined);
+                return makeProcess({
+                  // The first run finds the data folder taken; the second runs.
+                  exitCode:
+                    startCount === 1
+                      ? Effect.succeed(
+                          ChildProcessSpawner.ExitCode(SERVER_EXIT_CODE_STATE_DIR_OWNED),
+                        )
+                      : Effect.never,
+                });
+              }),
+            ),
+          ),
+          httpClientLayer: layerHttpClient(() => Effect.never),
+          // The handler runs under the instance's lock, so a restart has to be forked.
+          onStateDirOwned: Effect.suspend(() => instanceRef?.start ?? Effect.void).pipe(
+            Effect.forkDetach,
+            Effect.asVoid,
+          ),
+        });
+        instanceRef = instance;
+        yield* instance.start;
+        yield* Deferred.await(secondStart).pipe(Effect.timeout("1 second"));
+        assert.equal(startCount, 2);
+        assert.isTrue((yield* instance.snapshot).desiredRunning);
+      }).pipe(Effect.provide(TestClock.layer())),
+    ),
+  );
+
   // A policy refusal is reported on the first exit, since retrying cannot fix it.
   it.effect.each([
     { code: 1, exits: 3, managedPolicy: false },
