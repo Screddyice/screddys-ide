@@ -208,4 +208,5 @@ export const grokUsageReader: ProviderUsageReader<GrokSettings, Path.Path> = {
     // Only updates.jsonl carries usage; skip large chat_history and events logs.
     return [{ dir: path.resolve(home, "sessions"), fileName: "updates.jsonl" }];
   }),
+  accountFolder: { dir: "sessions", fileName: "updates.jsonl" },
 };

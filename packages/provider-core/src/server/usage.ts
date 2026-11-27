@@ -118,6 +118,8 @@ export type ProviderUsageReader<Config, R> =
         never,
         R
       >;
+      /** Where transcripts sit inside a home folder added in Settings → Usage accounts. */
+      readonly accountFolder?: { readonly dir: string; readonly fileName?: string };
     }
   | {
       readonly kind: "scan";

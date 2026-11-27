@@ -657,6 +657,25 @@ describe("serverSettings helpers", () => {
     expect(Object.keys(removed.usageLimitSources)).toEqual([hubB]);
   });
 
+  it("adds, edits and removes usage accounts per entry", () => {
+    const account = (label: string, homePath: string) => ({
+      provider: "claude" as const,
+      label,
+      homePath,
+      enabled: true,
+    });
+    const added = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, {
+      usageAccounts: { team: account("Team", "~/team-context"), work: account("Work", "~/w") },
+    });
+    const edited = applyServerSettingsPatch(added, {
+      usageAccounts: { work: { ...account("Work", "~/w"), enabled: false } },
+    });
+    expect(edited.usageAccounts.team).toEqual(account("Team", "~/team-context"));
+    expect(edited.usageAccounts.work?.enabled).toBe(false);
+    const removed = applyServerSettingsPatch(edited, { usageAccounts: { team: null } });
+    expect(Object.keys(removed.usageAccounts)).toEqual(["work"]);
+  });
+
   it("upserts and removes secretProviders per entry so concurrent edits cannot clobber", () => {
     const personal = SecretProviderId.make("personal");
     const work = SecretProviderId.make("work");

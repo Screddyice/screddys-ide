@@ -7,9 +7,10 @@ steps:
       - npm install -g "$(node -p 'require("./package.json").packageManager')"
       - pnpm install --frozen-lockfile
       - node apps/web/node_modules/playwright/cli.js install --with-deps --only-shell chromium
-      - pnpm --filter @t3tools/shared exec vp test run src/usageLimits.test.ts src/grokBotPrompt.test.ts
+      - pnpm --filter @t3tools/shared exec vp test run src/usageLimits.test.ts src/grokBotPrompt.test.ts src/serverSettings.test.ts
       - pnpm --filter @t3tools/scripts exec vp test run vendor-submodule.test.ts
       - pnpm --filter t3 exec vp test run src/mcp/toolkits/missionControl.test.ts
+      - pnpm --filter t3 exec vp test run src/usage/UsageService.test.ts -t "usage folders added in Settings"
       - pnpm --filter @t3tools/desktop exec vp test run src/missionControl src/hostAutomations/hostAutomations.test.ts src/ipc/methods/missionControl.test.ts src/ipc/methods/missionControlSocket.test.ts src/backend/DesktopStaleServer.test.ts src/backend/DesktopBackendManager.test.ts src/backend/DesktopBackendPool.test.ts src/app/DesktopTokenMonitorPlugin.test.ts src/ipc/methods/tokenMonitorSection.test.ts src/ipc/methods/tokenMonitorPanel.test.ts src/ipc/methods/tokenUsage.test.ts src/electron/ElectronShell.test.ts src/app/DesktopApp.test.ts
       - >-
         pnpm --filter @t3tools/web exec vp test run --project browser
