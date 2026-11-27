@@ -47,9 +47,20 @@ const secretFlag = new RegExp(`^--?[\\w-]*${SECRET}[\\w-]*$`, "i");
 const secretAssignment = new RegExp(`^(-{0,2}[\\w-]*${SECRET}[\\w-]*=).*$`, "i");
 // One shell word: bare and quoted pieces in any mix, as in prefix"a b". An unclosed quote runs to
 // the end of the line, so a malformed value hides more rather than less.
-const quotedValue = `(?:[^\\s'"]+|"[^"]*"?|'[^']*'?)+`;
-const firstWord = new RegExp(`^${quotedValue}`);
-const closedQuotes = /^(?:[^'"]|"[^"]*"|'[^']*')*$/;
+// Double-quoted text and bare text both take backslash escapes, so \" doesn't end a value.
+const DOUBLE_QUOTED = `"(?:[^"\\\\]|\\\\.)*"?`;
+const quotedValue = `(?:[^\\s'"\\\\]+|\\\\.|${DOUBLE_QUOTED}|'[^']*'?)+`;
+// A program name stops at redirections and other operators, as in "/opt/run">/tmp/out.
+const firstWord = new RegExp(`^(?:[^\\s'"\\\\<>|;&()]+|\\\\.|${DOUBLE_QUOTED}|'[^']*'?)+`);
+const closedQuotes = /^(?:[^'"\\]|\\.|"(?:[^"\\]|\\.)*"|'[^']*')*$/;
+const shellQuoting = /"((?:[^"\\]|\\.)*)"|'([^']*)'|\\(.)/g;
+
+/** The word as the shell passes it on: quotes removed, backslash escapes resolved. */
+function unquote(word: string): string {
+  return word.replace(shellQuoting, (_, double?: string, single?: string, escaped?: string) =>
+    double !== undefined ? double.replace(/\\(.)/g, "$1") : (single ?? escaped ?? ""),
+  );
+}
 const leadingAssignments = new RegExp(`^(?:[A-Za-z_]\\w*=(?:${quotedValue})?(?:\\s+|$))+`);
 const secretFlagInText = new RegExp(
   `(^|\\s)(--?[\\w-]*${SECRET}[\\w-]*)(=|\\s+)${quotedValue}`,
@@ -326,8 +337,7 @@ export function cronAutomations(text: string): HostAutomation[] {
     // Leading NAME=value assignments are environment, not the program, and may hold secrets.
     const word = firstWord.exec(command.replace(leadingAssignments, ""))?.[0] ?? "";
     // Balanced quotes are shell syntax and come off; an unclosed one means the line didn't parse.
-    const program =
-      word && closedQuotes.test(word) ? word.replace(/"([^"]*)"|'([^']*)'/g, "$1$2") : "command";
+    const program = word && closedQuotes.test(word) ? unquote(word) : "command";
     jobs.push({
       id: `cron:${jobs.length}`,
       source: "cron",

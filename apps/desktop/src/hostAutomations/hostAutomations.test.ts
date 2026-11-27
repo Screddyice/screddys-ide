@@ -292,6 +292,20 @@ describe("cronAutomations", () => {
       "0 8 * * * MODE=prod \"/opt/tasks/backup\"\n0 9 * * * '/opt/my tasks/sync' --all\n",
     );
     expect(quoted.map((job) => job.name)).toEqual(["backup", "sync"]);
+    // A redirection right after the program is not part of its name, and an escaped quote
+    // inside double quotes is a literal quote.
+    const shell = cronAutomations(
+      [
+        '0 8 * * * "/opt/tasks/backup">/tmp/out',
+        "0 9 * * * /opt/run>/tmp/out 2>&1",
+        String.raw`0 10 * * * "/opt/tasks/say\"hi"`,
+      ].join("\n"),
+    );
+    expect(shell.map((job) => job.name)).toEqual(["backup", "run", 'say"hi']);
+    // An escaped quote must not end a hidden value early.
+    const [escaped] = cronAutomations(String.raw`0 8 * * * TOKEN="a\"b c" /opt/run` + "\n");
+    expect(escaped?.command).toBe("TOKEN=[hidden] /opt/run");
+    expect(escaped?.name).toBe("run");
   });
 });
 
