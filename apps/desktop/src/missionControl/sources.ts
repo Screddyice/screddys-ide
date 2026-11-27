@@ -10,6 +10,7 @@ import type {
   MissionControlTaskContext,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as Schema from "effect/Schema";
 
 import { gmailThread, safeProviderUrl } from "./triage.ts";
 import { teamLaneOrder, teamTaskContext } from "./context.ts";
@@ -83,6 +84,54 @@ const completeIssueMutation = `mutation ScreddyCompleteIssue($id: String!, $stat
 }`;
 
 const proxyOrigins = { gmail: "https://gmail.googleapis.com", slack: "https://slack.com" };
+
+export const sourceHints = {
+  unknown: "The existing connection did not return usable data.",
+  limited: "The provider is limiting requests right now. Try again in a few minutes.",
+  expired: "The sign-in for this account expired or was revoked. Reconnect it in Composio.",
+  disabled:
+    "Google says this service is turned off for the account. A Google Workspace admin can turn it back on in the Admin console; a billing hold can also turn it off.",
+  denied: "The account is connected but not allowed to read this data. Reconnect it in Composio.",
+};
+
+const slackSignInErrors = new Set([
+  "invalid_auth",
+  "not_authed",
+  "token_revoked",
+  "token_expired",
+  "account_inactive",
+]);
+
+class ProviderError extends Schema.TaggedError<ProviderError>()("ProviderError", {
+  hint: Schema.UndefinedOr(Schema.String),
+}) {
+  override get message() {
+    return "Provider request failed";
+  }
+}
+const isProviderError = Schema.is(ProviderError);
+
+// Provider messages can carry restricted content, so only fixed hints reach the UI.
+function providerHint(data: Obj) {
+  const slack = str(data.error);
+  const error = obj(data.error);
+  const code = Number(error.code);
+  const status = str(error.status);
+  const reasons = rows(error.errors).map((entry) => str(entry.reason));
+  if (
+    code === 429 ||
+    status === "RESOURCE_EXHAUSTED" ||
+    slack === "ratelimited" ||
+    reasons.some((reason) => /ratelimitexceeded$/i.test(reason))
+  )
+    return sourceHints.limited;
+  if (code === 401 || status === "UNAUTHENTICATED" || slackSignInErrors.has(slack))
+    return sourceHints.expired;
+  if (/\bservice not enabled\b/i.test(str(error.message))) return sourceHints.disabled;
+  if (code === 403 || status === "PERMISSION_DENIED" || slack === "missing_scope")
+    return sourceHints.denied;
+  return undefined;
+}
 
 function googleTasksUrl(list: string) {
   return "https://tasks.googleapis.com/tasks/v1/lists/" + encodeURIComponent(list) + "/tasks";
@@ -230,7 +279,7 @@ export function connector(home: string) {
         ? await readComposioArtifact(inline, artifactDirectory)
         : inline;
     if (data.successful === false || data.ok === false || data.error)
-      throw new Error("Provider unavailable");
+      throw new ProviderError({ hint: providerHint(data) });
     return data;
   }
 
@@ -349,7 +398,7 @@ export function connector(home: string) {
       if (result.successful !== true || !result.data) throw new Error("Provider rejected request");
       const data = obj(result.data);
       if (data.ok === false || data.error || (data.status && data.status !== "ok")) {
-        throw new Error("Provider rejected request");
+        throw new ProviderError({ hint: providerHint(data) });
       }
       return data;
     },
@@ -744,6 +793,6 @@ export function sourceStatus(
         source,
         account,
         state: "unavailable",
-        detail: "The existing connection did not return usable data.",
+        detail: (isProviderError(outcome.reason) && outcome.reason.hint) || sourceHints.unknown,
       };
 }
