@@ -127,6 +127,8 @@ it("lets apps act only on unrestricted items Mission Control showed them, or tas
             { id: "tasks:l:open" },
             { id: "tasks:l:secret", taskContext: { restricted: true } },
             { id: "gmail:Personal:abcdef01" },
+            { id: "slack:C0LAUNCH:1794952800.000100" },
+            { id: "slack:C0SECRET:1794952800.000200", taskContext: { restricted: true } },
           ],
         }
       : (payload as { kind?: string })?.kind === "create-task"
@@ -148,6 +150,14 @@ it("lets apps act only on unrestricted items Mission Control showed them, or tas
     },
   );
   expect(await dispatch("reply-preview", "gmail:Personal:abcdef01")).toMatchObject({ ok: true });
+  const slackReply = { kind: "reply", revision: "a".repeat(64), body: "On it" };
+  expect(
+    await dispatch("action", { ...slackReply, itemId: "slack:C0LAUNCH:1794952800.000100" }),
+  ).toMatchObject({ ok: true });
+  expect(await dispatch("reply-preview", "slack:C0SECRET:1794952800.000200")).toEqual(refused);
+  expect(
+    await dispatch("action", { ...slackReply, itemId: "slack:C0SECRET:1794952800.000200" }),
+  ).toEqual(refused);
   expect(
     await dispatch("action", { kind: "update-task", itemId: "tasks:l:secret", title: "x" }),
   ).toEqual(refused);
@@ -157,8 +167,7 @@ it("lets apps act only on unrestricted items Mission Control showed them, or tas
   expect(
     await dispatch("action", { kind: "update-task", itemId: "tasks:l:new", title: "Book trains" }),
   ).toMatchObject({ ok: true });
-  expect(run).not.toHaveBeenCalledWith(
-    "action",
-    expect.objectContaining({ itemId: "tasks:l:secret" }),
-  );
+  for (const itemId of ["tasks:l:secret", "slack:C0SECRET:1794952800.000200"]) {
+    expect(run).not.toHaveBeenCalledWith("action", expect.objectContaining({ itemId }));
+  }
 });

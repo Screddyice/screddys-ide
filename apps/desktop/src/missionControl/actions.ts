@@ -33,6 +33,10 @@ const mailbox =
   /^[A-Za-z0-9.!#$%&'*+/=?^_{}|~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z0-9-]+$/;
 const messageId = /^<[^\s<>@]{1,250}@[^\s<>@]{1,250}>$/;
 const unconfirmed = "Gmail did not confirm the send. Check Sent in Gmail before sending again.";
+const slackItemId = /^slack:([CDG][A-Z0-9]{1,30}):(\d{1,12}\.\d{1,8})$/;
+const slackUser = /^[UW][A-Z0-9]{1,30}$/;
+const slackUnconfirmed =
+  "Slack did not confirm the reply. Check the thread in Slack before sending again.";
 
 function hash(parts: readonly string[]) {
   return NodeCrypto.createHash("sha256").update(JSON.stringify(parts)).digest("hex");
@@ -113,11 +117,118 @@ async function readReply(api: Connector, bindings: Bindings, itemId: string) {
   };
 }
 
+function slackLine(input: unknown, me: string, length: number) {
+  return str(input)
+    .replace(/\s+/g, " ")
+    .trim()
+    .replaceAll(`<@${me}>`, "@you")
+    .replace(/<https?:[^>]+>/g, "[link]")
+    .slice(0, length);
+}
+
+function slackPage(page: Record<string, unknown>) {
+  // A thread longer than one page could hide a newer message, so it is never guessed at.
+  if (page.has_more || obj(page.response_metadata).next_cursor) {
+    throw actionError("This Slack conversation is too long to check here. Reply in Slack.");
+  }
+  return rows(page.messages);
+}
+
+/**
+ * Applies the rule Mission Control used to list the item: a DM, or a message that mentions you,
+ * with no later message of yours in the thread (or, for a DM with no thread, in the DM).
+ */
+async function readSlackReply(api: Connector, bindings: Bindings, itemId: string) {
+  const [, channel, root] = slackItemId.exec(itemId) ?? [];
+  const account = bindings.slack;
+  if (!channel || !root || !account)
+    throw actionError("This item is not a configured Slack thread.");
+  const auth = await api.proxy("slack", account, "/api/auth.test");
+  const me = str(auth.user_id);
+  const team = str(auth.team_id);
+  if (!slackUser.test(me) || !team || auth.bot_id) {
+    throw actionError("Slack could not confirm that the reply would come from your own account.");
+  }
+  const info = obj(
+    (await api.proxy("slack", account, "/api/conversations.info", { channel })).channel,
+  );
+  if (info.id !== channel || info.is_archived === true || info.is_ext_shared === true) {
+    throw actionError("Screddy can't reply in this Slack conversation. Open it in Slack.");
+  }
+  const thread = slackPage(
+    await api.proxy("slack", account, "/api/conversations.replies", {
+      channel,
+      ts: root,
+      limit: 200,
+    }),
+  ).toSorted((a, b) => Number(a.ts) - Number(b.ts));
+  const dm = info.is_im === true || info.is_mpim === true;
+  const anchor = thread.findLast(
+    (message) =>
+      slackUser.test(str(message.user)) &&
+      message.user !== me &&
+      (dm || str(message.text).includes(`<@${me}>`)),
+  );
+  const first = thread.find((message) => message.ts === root);
+  const newest = thread.at(-1);
+  if (!first || !anchor || !newest) {
+    throw actionError("This Slack thread no longer has a message waiting on you.");
+  }
+  const mine = (messages: Record<string, unknown>[]) =>
+    messages.some((message) => message.user === me && Number(message.ts) > Number(anchor.ts));
+  if (
+    mine(thread) ||
+    (dm &&
+      thread.length === 1 &&
+      mine(
+        slackPage(
+          await api.proxy("slack", account, "/api/conversations.history", {
+            channel,
+            oldest: root,
+            limit: 50,
+          }),
+        ),
+      ))
+  ) {
+    throw actionError("You already replied in this Slack thread.");
+  }
+  let to = info.name ? "#" + slackLine(info.name, me, 80) : "Slack channel";
+  if (info.is_mpim === true) to = "Group direct message";
+  if (info.is_im === true) {
+    const person = slackUser.test(str(info.user))
+      ? obj((await api.proxy("slack", account, "/api/users.info", { user: str(info.user) })).user)
+      : {};
+    const name = slackLine(
+      obj(person.profile).real_name || person.real_name || person.name,
+      me,
+      80,
+    );
+    to = name ? "Direct message with " + name : "Direct message";
+  }
+  const user = slackLine(auth.user, me, 80);
+  const from = (user ? "@" + user : me) + (auth.team ? ` (${slackLine(auth.team, me, 80)})` : "");
+  return {
+    account,
+    channel,
+    root,
+    me,
+    from,
+    to,
+    subject: slackLine(first.text, me, 170) || "Slack thread",
+    snippet: slackLine(anchor.text, me, 320),
+    revision: hash([account, team, me, channel, root, str(anchor.ts), str(newest.ts), to]),
+  };
+}
+
 export async function previewMissionControlReply(
   api: Connector,
   bindings: Bindings,
   itemId: string,
 ) {
+  if (itemId.startsWith("slack:")) {
+    const { from, to, subject, snippet, revision } = await readSlackReply(api, bindings, itemId);
+    return { ok: true as const, from, to, subject, snippet, revision };
+  }
   const { account, recipient, subject, snippet, revision } = await readReply(api, bindings, itemId);
   return { ok: true as const, from: account.email, to: recipient, subject, snippet, revision };
 }
@@ -163,18 +274,63 @@ function rawReply(target: Awaited<ReturnType<typeof readReply>>, body: string) {
   return Buffer.from(mime, "utf8").toString("base64url");
 }
 
+type ReplyRequest = Extract<MissionControlActionRequest, { kind: "reply" }>;
+
+/** Rechecks the email and returns a send that reports whether Gmail confirmed it. */
+async function gmailSend(api: Connector, bindings: Bindings, request: ReplyRequest) {
+  const target = await readReply(api, bindings, request.itemId);
+  if (target.revision !== request.revision) {
+    throw actionError(
+      "The email changed since you opened the reply. Review the current recipient and email before sending.",
+    );
+  }
+  return async () => {
+    const result = await api.sendGmailReply(
+      target.account.selector,
+      target.threadId,
+      rawReply(target, request.body),
+    );
+    return Boolean(result?.id) && result.threadId === target.threadId;
+  };
+}
+
+/** Rechecks the Slack thread and returns a post that reports whether Slack confirmed it. */
+async function slackSend(api: Connector, bindings: Bindings, request: ReplyRequest) {
+  const target = await readSlackReply(api, bindings, request.itemId);
+  if (target.revision !== request.revision) {
+    throw actionError(
+      "The Slack thread changed since you opened the reply. Review the latest message before sending.",
+    );
+  }
+  // Escaped so the text can't carry Slack mentions such as <!channel> or <@user>.
+  const text = request.body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return async () => {
+    const result = await api.postSlackReply(target.account, target.channel, target.root, text);
+    const message = obj(result.message);
+    return (
+      result.ok === true &&
+      result.channel === target.channel &&
+      /^\d+\.\d+$/.test(str(result.ts)) &&
+      message.thread_ts === target.root &&
+      message.user === target.me
+    );
+  };
+}
+
 export async function sendMissionControlReply(
   api: Connector,
   bindings: Bindings,
   baseDir: string,
-  request: Extract<MissionControlActionRequest, { kind: "reply" }>,
+  request: ReplyRequest,
 ) {
   const body = request.body;
   if (!body.trim()) throw actionError("Enter a reply before sending.");
+  const slack = request.itemId.startsWith("slack:");
+  const unconfirmedReply = slack ? slackUnconfirmed : unconfirmed;
   const receiptDirectory = NodePath.join(baseDir, "mission-control-replies");
   const receipt = NodePath.join(receiptDirectory, hash([request.itemId, request.revision]));
   const sentReceipt = receipt + ".sent";
-  const done = { ok: true as const, message: "Reply sent." };
+  const done = { ok: true as const, message: slack ? "Reply posted in Slack." : "Reply sent." };
   if (
     await NodeFSP.access(sentReceipt).then(
       () => true,
@@ -188,28 +344,20 @@ export async function sendMissionControlReply(
       () => false,
     )
   )
-    throw actionError(unconfirmed);
+    throw actionError(unconfirmedReply);
 
-  const target = await readReply(api, bindings, request.itemId);
-  if (target.revision !== request.revision) {
-    throw actionError(
-      "The email changed since you opened the reply. Review the current recipient and email before sending.",
-    );
-  }
+  const send = await (slack ? slackSend : gmailSend)(api, bindings, request);
   await NodeFSP.mkdir(receiptDirectory, { recursive: true, mode: 0o700 });
   try {
     await NodeFSP.writeFile(receipt, "", { flag: "wx", mode: 0o600 });
   } catch (error) {
-    if (obj(error).code === "EEXIST") throw actionError(unconfirmed);
+    if (obj(error).code === "EEXIST") throw actionError(unconfirmedReply);
     throw error;
   }
 
   // Reserve the exact incoming message before dispatch. A lost acknowledgement
   // cannot produce a second send, even after restarting the desktop.
-  const result = await api
-    .sendGmailReply(target.account.selector, target.threadId, rawReply(target, body))
-    .catch(() => null);
-  if (!result?.id || result.threadId !== target.threadId) throw actionError(unconfirmed);
+  if (!(await send().catch(() => false))) throw actionError(unconfirmedReply);
   await NodeFSP.writeFile(sentReceipt, "", { flag: "wx", mode: 0o600 }).catch(() => {});
   return done;
 }

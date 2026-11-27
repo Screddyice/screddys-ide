@@ -56,7 +56,7 @@ const MissionControlPriorities = Tool.make("mission_control_priorities", {
 const MissionControlReplyPreview = Tool.make("mission_control_reply_preview", {
   ...shared,
   description:
-    "Check an email item before replying: sender, recipient, subject, latest snippet, and the revision mission_control_act needs to send a reply.",
+    "Check an email or Slack item (canReply true) before replying. Returns who the reply comes from, where it goes (the email recipient, or the Slack channel or DM), the subject or first message of the thread, the latest message waiting on the user, and the revision mission_control_act needs to send it.",
   parameters: Schema.Struct({ itemId: MissionControlActionItemIdSchema }),
   success: Schema.Struct({
     from: Schema.String,
@@ -66,7 +66,7 @@ const MissionControlReplyPreview = Tool.make("mission_control_reply_preview", {
     revision: Schema.String,
   }),
 })
-  .annotate(Tool.Title, "Preview an email reply")
+  .annotate(Tool.Title, "Preview a reply")
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(McpSchema.EnabledWhen, McpInvocationContext.appClientsOnly);
@@ -74,7 +74,7 @@ const MissionControlReplyPreview = Tool.make("mission_control_reply_preview", {
 const MissionControlAct = Tool.make("mission_control_act", {
   ...shared,
   description:
-    "Act on an item from mission_control_priorities (or a task you just added). kind: reply (itemId, revision from mission_control_reply_preview, body; sends the email), complete-linear or complete-task (itemId), create-task (title, optional notes and due YYYY-MM-DD), update-task (itemId plus only the fields to change; due null clears it). Confirm a reply with the user before sending.",
+    "Act on an item from mission_control_priorities (or a task you just added). kind: reply (itemId, revision from mission_control_reply_preview, body; sends the email, or posts in the item's Slack thread as the user), complete-linear or complete-task (itemId), create-task (title, optional notes and due YYYY-MM-DD), update-task (itemId plus only the fields to change; due null clears it). Confirm a reply with the user before sending.",
   parameters: Schema.Struct({
     kind: Schema.Literals([
       "reply",

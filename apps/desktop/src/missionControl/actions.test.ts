@@ -129,6 +129,157 @@ it("does not resend after a send was attempted without an acknowledgement", asyn
   }
 });
 
+const slackBindings: Bindings = { ...bindings, slack: "slack-owner" };
+const slackId = "slack:C0LAUNCH:1794952800.000100";
+
+function slackFixture() {
+  let thread: Record<string, unknown>[] = [
+    { ts: "1794952800.000100", user: "U0OTHER", text: "Launch plan is in the doc" },
+    { ts: "1794952860.000200", user: "U0OTHER", text: "<@U0ME> can you sign off?" },
+  ];
+  let token: Record<string, unknown> = {
+    user_id: "U0ME",
+    user: "owner",
+    team_id: "T0TEAM",
+    team: "Example",
+  };
+  const proxy = vi.fn<Connector["proxy"]>(async (toolkit, account, path, params) => {
+    expect([toolkit, account]).toEqual(["slack", "slack-owner"]);
+    if (path === "/api/auth.test") return token;
+    if (path === "/api/conversations.info") {
+      expect(params).toEqual({ channel: "C0LAUNCH" });
+      return { channel: { id: "C0LAUNCH", name: "launch" } };
+    }
+    expect(path).toBe("/api/conversations.replies");
+    expect(params).toMatchObject({ channel: "C0LAUNCH", ts: "1794952800.000100" });
+    return { messages: thread, has_more: false };
+  });
+  const postSlackReply = vi.fn<Connector["postSlackReply"]>(
+    async (_account, channel, threadTs, text) => {
+      const message = { ts: "1794952900.000300", user: "U0ME", thread_ts: threadTs, text };
+      thread = [...thread, message];
+      return { ok: true, channel, ts: message.ts, message };
+    },
+  );
+  return {
+    api: { proxy, postSlackReply } as unknown as Connector,
+    postSlackReply,
+    setThread(messages: Record<string, unknown>[]) {
+      thread = messages;
+    },
+    setToken(value: Record<string, unknown>) {
+      token = value;
+    },
+  };
+}
+
+it("previews the Slack thread, then posts one escaped reply in it as the connected account", async () => {
+  const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "screddy-reply-"));
+  try {
+    const { api, postSlackReply } = slackFixture();
+    const preview = await previewMissionControlReply(api, slackBindings, slackId);
+    expect(preview).toMatchObject({
+      ok: true,
+      from: "@owner (Example)",
+      to: "#launch",
+      subject: "Launch plan is in the doc",
+      snippet: "@you can you sign off?",
+    });
+    const reply = {
+      kind: "reply" as const,
+      itemId: slackId,
+      revision: preview.revision,
+      body: "Signed off <!channel> & shipping",
+    };
+    await expect(
+      sendMissionControlReply(api, slackBindings, directory, reply),
+    ).resolves.toMatchObject({ ok: true, message: "Reply posted in Slack." });
+    expect(postSlackReply).toHaveBeenCalledExactlyOnceWith(
+      "slack-owner",
+      "C0LAUNCH",
+      "1794952800.000100",
+      "Signed off &lt;!channel&gt; &amp; shipping",
+    );
+    await expect(
+      sendMissionControlReply(api, slackBindings, directory, reply),
+    ).resolves.toMatchObject({ message: "A reply to this message was already sent." });
+    expect(postSlackReply).toHaveBeenCalledTimes(1);
+  } finally {
+    await NodeFSP.rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("refuses a Slack reply once the thread changed, you already answered, or the token is a bot", async () => {
+  const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "screddy-reply-"));
+  try {
+    const { api, postSlackReply, setThread, setToken } = slackFixture();
+    const preview = await previewMissionControlReply(api, slackBindings, slackId);
+    const mention = { ts: "1794952860.000200", user: "U0OTHER", text: "<@U0ME> can you sign off?" };
+    const root = { ts: "1794952800.000100", user: "U0OTHER", text: "Launch plan is in the doc" };
+    setThread([root, mention, { ts: "1794952870.000300", user: "U0THIRD", text: "Same question" }]);
+    await expect(
+      sendMissionControlReply(api, slackBindings, directory, {
+        kind: "reply",
+        itemId: slackId,
+        revision: preview.revision,
+        body: "Done",
+      }),
+    ).rejects.toThrow(/thread changed/);
+
+    // Answering the mention settles it, even when someone else posts afterwards.
+    setThread([
+      root,
+      mention,
+      { ts: "1794952880.000400", user: "U0ME", text: "Signed off" },
+      { ts: "1794952890.000500", user: "U0THIRD", text: "Thanks" },
+    ]);
+    await expect(previewMissionControlReply(api, slackBindings, slackId)).rejects.toThrow(
+      /already replied/,
+    );
+
+    setThread([root, mention]);
+    setToken({ user_id: "U0ME", team_id: "T0TEAM", bot_id: "B0BOT" });
+    await expect(previewMissionControlReply(api, slackBindings, slackId)).rejects.toThrow(
+      /your own account/,
+    );
+    await expect(
+      previewMissionControlReply(api, slackBindings, "slack:C0LAUNCH:not-a-thread"),
+    ).rejects.toThrow(/not a configured Slack thread/);
+    expect(postSlackReply).not.toHaveBeenCalled();
+  } finally {
+    await NodeFSP.rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("does not repost after Slack fails to confirm the reply came from you", async () => {
+  const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "screddy-reply-"));
+  try {
+    const { api, postSlackReply } = slackFixture();
+    postSlackReply.mockResolvedValue({
+      ok: true,
+      channel: "C0LAUNCH",
+      ts: "1794952900.000300",
+      message: { user: "U0SOMEBOT", thread_ts: "1794952800.000100" },
+    });
+    const preview = await previewMissionControlReply(api, slackBindings, slackId);
+    const reply = {
+      kind: "reply" as const,
+      itemId: slackId,
+      revision: preview.revision,
+      body: "Ok",
+    };
+    await expect(sendMissionControlReply(api, slackBindings, directory, reply)).rejects.toThrow(
+      /Check the thread in Slack/,
+    );
+    await expect(sendMissionControlReply(api, slackBindings, directory, reply)).rejects.toThrow(
+      /Check the thread in Slack/,
+    );
+    expect(postSlackReply).toHaveBeenCalledTimes(1);
+  } finally {
+    await NodeFSP.rm(directory, { recursive: true, force: true });
+  }
+});
+
 it("updates only the selected assigned issue to that team's completed status", async () => {
   const id = "ca751e05-66cd-4d10-8014-a173c8b7d11d";
   const status = "d9decd72-47d4-495d-9dbf-141ed7ed9de8";

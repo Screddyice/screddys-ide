@@ -235,7 +235,7 @@ export function connector(home: string) {
   }
 
   function post(
-    toolkit: "gmail" | "linear" | "googletasks",
+    toolkit: "gmail" | "linear" | "googletasks" | "slack",
     account: string,
     url: string,
     data: Obj,
@@ -327,6 +327,15 @@ export function connector(home: string) {
       return post("gmail", account, proxyOrigins.gmail + "/gmail/v1/users/me/messages/send", {
         threadId,
         raw,
+      });
+    },
+    /** Posts in the thread as the token's own user; `text` must already be Slack-escaped. */
+    postSlackReply(account: string, channel: string, threadTs: string, text: string) {
+      return post("slack", account, proxyOrigins.slack + "/api/chat.postMessage", {
+        channel,
+        thread_ts: threadTs,
+        text,
+        link_names: false,
       });
     },
     async action(tool: string, account: string, params: Params = {}) {
@@ -527,6 +536,7 @@ export async function readSlack(api: Connector, account: string, today: string):
       activity: DateTime.formatIso(DateTime.makeUnsafe(activity)),
       due: null,
       urgency: "normal",
+      canReply: true,
     } satisfies MissionControlItem;
   });
   return {
