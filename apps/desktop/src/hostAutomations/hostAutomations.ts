@@ -45,7 +45,10 @@ const MAX_COMMAND = 240;
 const SECRET = "(?:key|token|secret|password|passwd)";
 const secretFlag = new RegExp(`^--?[\\w-]*${SECRET}[\\w-]*$`, "i");
 const secretAssignment = new RegExp(`^(-{0,2}[\\w-]*${SECRET}[\\w-]*=).*$`, "i");
-const quotedValue = `(?:"[^"]*"|'[^']*'|\\S+)`;
+// One shell word: bare and quoted pieces in any mix, as in prefix"a b". An unclosed quote runs to
+// the end of the line, so a malformed value hides more rather than less.
+const quotedValue = `(?:[^\\s'"]+|"[^"]*"?|'[^']*'?)+`;
+const leadingAssignments = new RegExp(`^(?:[A-Za-z_]\\w*=(?:${quotedValue})?(?:\\s+|$))+`);
 const secretFlagInText = new RegExp(
   `(^|\\s)(--?[\\w-]*${SECRET}[\\w-]*)(=|\\s+)${quotedValue}`,
   "gi",
@@ -177,9 +180,11 @@ export function parseLaunchctlPrint(text: string): LaunchctlEntry | null {
   if (!fields.has("state")) return null;
   const pid = fields.get("pid");
   const status = Number(fields.get("last exit code"));
+  // A job a signal stopped reports that instead; launchctl list shows it as a negative status.
+  const signal = /(\d+)\s*$/.exec(fields.get("last terminating signal") ?? "")?.[1];
   return {
     pid: fields.get("state") === "running" && pid && /^\d+$/.test(pid) ? Number(pid) : null,
-    status: Number.isInteger(status) ? status : 0,
+    status: Number.isInteger(status) ? status : signal ? -Number(signal) : 0,
   };
 }
 
@@ -243,7 +248,13 @@ export function launchdAutomation(input: {
           : entry.pid !== null
             ? { state: "running", detail: `PID ${entry.pid}` }
             : entry.status !== 0
-              ? { state: "failed", detail: `Last exit ${entry.status}` }
+              ? {
+                  state: "failed",
+                  detail:
+                    entry.status < 0
+                      ? `Stopped by signal ${-entry.status}`
+                      : `Last exit ${entry.status}`,
+                }
               : { state: "idle" };
   return {
     id: `launchd:${input.scope}:${label}`,
@@ -311,9 +322,9 @@ export function cronAutomations(text: string): HostAutomation[] {
       command = fields[6]!;
     }
     // Leading NAME=value assignments are environment, not the program, and may hold secrets.
-    const program =
-      command.replace(/^(?:[A-Za-z_]\w*=(?:'[^']*'|"[^"]*"|\S*)\s+)+/, "").split(/\s+/)[0] ||
-      "command";
+    const word = command.replace(leadingAssignments, "").split(/\s+/)[0] ?? "";
+    // Anything still quoted means the line didn't parse as plain words; don't guess a name from it.
+    const program = word && !/['"]/.test(word) ? word : "command";
     jobs.push({
       id: `cron:${jobs.length}`,
       source: "cron",

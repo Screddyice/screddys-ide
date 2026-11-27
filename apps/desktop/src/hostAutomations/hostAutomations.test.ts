@@ -135,6 +135,10 @@ describe("launchdAutomation", () => {
     expect(daemon(new Map([["com.vendor.daemon", { pid: null, status: 3 }]]))?.state).toBe(
       "failed",
     );
+    expect(daemon(new Map([["com.vendor.daemon", { pid: null, status: -9 }]]))).toMatchObject({
+      state: "failed",
+      detail: "Stopped by signal 9",
+    });
     expect(daemon(none, true)?.state).toBe("unknown");
     expect(agent({ Program: "/opt/x" })).toBeNull();
   });
@@ -193,6 +197,12 @@ describe("launchctl output", () => {
       pid: null,
       status: 78,
     });
+    // A daemon stopped by a signal reports it instead of an exit code.
+    expect(
+      parseLaunchctlPrint(
+        service("\tstate = not running\n\tlast terminating signal = Killed: 9\n"),
+      ),
+    ).toEqual({ pid: null, status: -9 });
     expect(parseLaunchctlPrint("")).toBeNull();
   });
 });
@@ -269,6 +279,14 @@ describe("cronAutomations", () => {
     );
     // The name skips leading assignments, so their values never reach it.
     expect(job?.name).toBe("run.sh");
+    // A value can mix bare and quoted text; none of it may reach the name or the command.
+    const [mixed] = cronAutomations('0 8 * * * MODE=prod TOKEN=prefix"secret value" /opt/run\n');
+    expect(mixed?.name).toBe("run");
+    expect(mixed?.command).toBe("MODE=prod TOKEN=[hidden] /opt/run");
+    // An unclosed quote hides the rest of the line rather than half the value.
+    const [open] = cronAutomations('0 8 * * * TOKEN="secret value /opt/run\n');
+    expect(open?.command).toBe("TOKEN=[hidden]");
+    expect(open?.name).toBe("command");
   });
 });
 
