@@ -48,6 +48,8 @@ const secretAssignment = new RegExp(`^(-{0,2}[\\w-]*${SECRET}[\\w-]*=).*$`, "i")
 // One shell word: bare and quoted pieces in any mix, as in prefix"a b". An unclosed quote runs to
 // the end of the line, so a malformed value hides more rather than less.
 const quotedValue = `(?:[^\\s'"]+|"[^"]*"?|'[^']*'?)+`;
+const firstWord = new RegExp(`^${quotedValue}`);
+const closedQuotes = /^(?:[^'"]|"[^"]*"|'[^']*')*$/;
 const leadingAssignments = new RegExp(`^(?:[A-Za-z_]\\w*=(?:${quotedValue})?(?:\\s+|$))+`);
 const secretFlagInText = new RegExp(
   `(^|\\s)(--?[\\w-]*${SECRET}[\\w-]*)(=|\\s+)${quotedValue}`,
@@ -322,9 +324,10 @@ export function cronAutomations(text: string): HostAutomation[] {
       command = fields[6]!;
     }
     // Leading NAME=value assignments are environment, not the program, and may hold secrets.
-    const word = command.replace(leadingAssignments, "").split(/\s+/)[0] ?? "";
-    // Anything still quoted means the line didn't parse as plain words; don't guess a name from it.
-    const program = word && !/['"]/.test(word) ? word : "command";
+    const word = firstWord.exec(command.replace(leadingAssignments, ""))?.[0] ?? "";
+    // Balanced quotes are shell syntax and come off; an unclosed one means the line didn't parse.
+    const program =
+      word && closedQuotes.test(word) ? word.replace(/"([^"]*)"|'([^']*)'/g, "$1$2") : "command";
     jobs.push({
       id: `cron:${jobs.length}`,
       source: "cron",
