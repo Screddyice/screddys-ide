@@ -1043,7 +1043,7 @@ const MissionControlSourceSchema = Schema.Literals([
   "tasks",
   "context",
 ]);
-const MissionControlPriorityFilterSchema = Schema.Literals([
+export const MissionControlPriorityFilterSchema = Schema.Literals([
   "all",
   "email",
   "slack",

@@ -45,6 +45,7 @@ import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpToolAccess from "./McpToolAccess.ts";
 import * as ComputerUseDecision from "./toolkits/computerUseDecision.ts";
 import * as PhoneControl from "./toolkits/phoneControl.ts";
+import * as MissionControl from "./toolkits/missionControl.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
 import * as PreviewControlsHandlers from "./toolkits/previewControls/handlers.ts";
@@ -1249,7 +1250,11 @@ export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE,
     registrations,
   }).pipe(Layer.provide(layerMcpAuthMiddleware));
 
-/** Every tool the T3 MCP server advertises. AgentContextBudget.test.ts measures this set. */
+/**
+ * Every tool the T3 MCP server advertises to agents. AgentContextBudget.test.ts measures this set.
+ * Mission Control's tools are registered beside it: only apps connected through Use in another
+ * app see them (`McpInvocationContext.appClientsOnly`), never an agent thread.
+ */
 export const layerTools = Layer.mergeAll(
   layerPreviewToolkit,
   layerOrchestratorToolkit,
@@ -1266,4 +1271,6 @@ export const layerTools = Layer.mergeAll(
   layerHtmlToolkit,
 );
 
-export const layer = layerMcpTransport(layerTools);
+const layerAppClientTools = toolkitRegistration(MissionControl.toolkit, MissionControl.layer);
+
+export const layer = layerMcpTransport(Layer.mergeAll(layerTools, layerAppClientTools));
