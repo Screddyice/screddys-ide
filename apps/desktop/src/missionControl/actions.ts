@@ -35,7 +35,8 @@ const messageId = /^<[^\s<>@]{1,250}@[^\s<>@]{1,250}>$/;
 const unconfirmed = "Gmail did not confirm the send. Check Sent in Gmail before sending again.";
 const slackItemId = /^slack:([CDG][A-Z0-9]{1,30}):(\d{1,12}\.\d{1,8})$/;
 const slackUser = /^[UW][A-Z0-9]{1,30}$/;
-/** How long an unconfirmed reply blocks another reply to the same item. */
+/** How long an unconfirmed reply blocks another reply to the same item, counted from when it
+ * turned out unconfirmed. */
 const PENDING_MS = 10 * 60_000;
 const slackUnconfirmed =
   "Slack did not confirm the reply. Check the thread in Slack before sending again.";
@@ -340,9 +341,32 @@ export async function sendMissionControlReply(
   if (!body.trim()) throw actionError("Enter a reply before sending.");
   const slack = request.itemId.startsWith("slack:");
   const unconfirmedReply = slack ? slackUnconfirmed : unconfirmed;
+  // The desktop app is a single instance, so every reply runs in this process. Checked and taken
+  // before the first await, this lock lets one reply per item run at a time, however long it takes.
+  const itemKey = hash([request.itemId]);
+  if (sendingItems.has(itemKey)) throw actionError(unconfirmedReply);
+  sendingItems.add(itemKey);
+  try {
+    return await sendReplyOnce(api, bindings, baseDir, request, itemKey, unconfirmedReply);
+  } finally {
+    sendingItems.delete(itemKey);
+  }
+}
+
+async function sendReplyOnce(
+  api: Connector,
+  bindings: Bindings,
+  baseDir: string,
+  request: ReplyRequest,
+  itemKey: string,
+  unconfirmedReply: string,
+) {
+  const slack = request.itemId.startsWith("slack:");
   const receiptDirectory = NodePath.join(baseDir, "mission-control-replies");
   const receipt = NodePath.join(receiptDirectory, hash([request.itemId, request.revision]));
   const sentReceipt = receipt + ".sent";
+  // Survives a restart: an unconfirmed reply may still land after the thread moves on.
+  const marker = NodePath.join(receiptDirectory, itemKey + ".pending");
   const done = { ok: true as const, message: slack ? "Reply posted in Slack." : "Reply sent." };
   if (
     await NodeFSP.access(sentReceipt).then(
@@ -360,64 +384,58 @@ export async function sendMissionControlReply(
     throw actionError(unconfirmedReply);
 
   await NodeFSP.mkdir(receiptDirectory, { recursive: true, mode: 0o700 });
-  // One reply at a time per item, taken before the thread is read again, so a second request
-  // waits for the first to settle and then sees its reply as "already replied".
-  const hold = await holdItem(receiptDirectory, hash([request.itemId]), unconfirmedReply);
-  const release = () => NodeFSP.rm(hold, { force: true }).catch(() => {});
-  let send: () => Promise<boolean>;
+  if (await recentlyUnconfirmed(receiptDirectory, itemKey)) throw actionError(unconfirmedReply);
+  // Rechecks the thread: a reply that did land since shows up here as "already replied".
+  const send = await (slack ? slackSend : gmailSend)(api, bindings, request);
   try {
-    send = await (slack ? slackSend : gmailSend)(api, bindings, request);
     await NodeFSP.writeFile(receipt, "", { flag: "wx", mode: 0o600 });
   } catch (error) {
-    await release();
     if (obj(error).code === "EEXIST") throw actionError(unconfirmedReply);
     throw error;
   }
 
   // Reserve the exact incoming message before dispatch. A lost acknowledgement
-  // cannot produce a second send, even after restarting the desktop. An unconfirmed
-  // reply keeps the hold, since it may still land after the thread moves on.
-  if (!(await send().catch(() => false))) throw actionError(unconfirmedReply);
+  // cannot produce a second send, even after restarting the desktop.
+  await NodeFSP.writeFile(marker, "", { mode: 0o600 });
+  if (!(await send().catch(() => false))) {
+    // The wait starts once the reply is known to be unconfirmed, not when it was started.
+    await NodeFSP.writeFile(marker, "", { mode: 0o600 }).catch(() => {});
+    throw actionError(unconfirmedReply);
+  }
   // The reply went out; bookkeeping failures must not report it as failed.
   await NodeFSP.writeFile(sentReceipt, "", { flag: "wx", mode: 0o600 }).catch(() => {});
-  await release();
+  await clearUnconfirmed(receiptDirectory, itemKey).catch(() => {});
   return done;
 }
 
-/**
- * Takes the item's send hold, or refuses while a hold under PENDING_MS old exists. Holds are
- * numbered files made with an exclusive create, so of two callers taking over the same stale
- * hold only one gets the next number.
- */
-async function holdItem(directory: string, itemKey: string, message: string) {
-  const prefix = itemKey + ".hold.";
-  const held = (await NodeFSP.readdir(directory))
-    .filter((name) => name.startsWith(prefix))
-    .map((name) => Number(name.slice(prefix.length)))
-    .filter((number) => Number.isSafeInteger(number) && number > 0);
-  const latest = Math.max(0, ...held);
-  if (latest > 0) {
-    const since = await NodeFSP.stat(NodePath.join(directory, prefix + latest)).then(
-      (stat) => stat.mtimeMs,
-      () => null,
-    );
-    // @effect-diagnostics-next-line globalDate:off - Compared with a file's mtime in plain async code outside any Effect fiber.
-    if (since !== null && Date.now() - since < PENDING_MS) throw actionError(message);
-  }
-  const hold = NodePath.join(directory, prefix + (latest + 1));
-  try {
-    await NodeFSP.writeFile(hold, "", { flag: "wx", mode: 0o600 });
-  } catch (error) {
-    if (obj(error).code === "EEXIST") throw actionError(message);
-    throw error;
-  }
-  // Older holds are past PENDING_MS, so nobody is waiting on them.
-  await Promise.all(
-    held.map((number) =>
-      NodeFSP.rm(NodePath.join(directory, prefix + number), { force: true }).catch(() => {}),
+/** Items with a reply being sent right now. */
+const sendingItems = new Set<string>();
+
+/** Files marking an item's unconfirmed reply, including the `.hold.N` names Screddy 0.1.87 used. */
+async function unconfirmedMarkers(directory: string, itemKey: string) {
+  return (await NodeFSP.readdir(directory))
+    .filter((name) => name === itemKey + ".pending" || name.startsWith(itemKey + ".hold."))
+    .map((name) => NodePath.join(directory, name));
+}
+
+/** True while the item's latest unconfirmed reply is under PENDING_MS old. */
+async function recentlyUnconfirmed(directory: string, itemKey: string) {
+  const times = await Promise.all(
+    (await unconfirmedMarkers(directory, itemKey)).map((path) =>
+      NodeFSP.stat(path).then(
+        (stat) => stat.mtimeMs,
+        () => 0,
+      ),
     ),
   );
-  return hold;
+  // @effect-diagnostics-next-line globalDate:off - Compared with a file's mtime in plain async code outside any Effect fiber.
+  return Date.now() - Math.max(0, ...times) < PENDING_MS;
+}
+
+async function clearUnconfirmed(directory: string, itemKey: string) {
+  await Promise.all(
+    (await unconfirmedMarkers(directory, itemKey)).map((path) => NodeFSP.rm(path, { force: true })),
+  );
 }
 
 function completionState(connection: Record<string, unknown>) {
