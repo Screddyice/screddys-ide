@@ -12,8 +12,6 @@ export const TOKEN_MONITOR_BUNDLE_ID = "com.javis.tokenmonitor";
 export const SNAPSHOT_RELATIVE_PATH = ["token-monitor", "snapshot.json"] as const;
 /** Older numbers are not shown as current; the plug-in rewrites the file every 30 seconds. */
 export const SNAPSHOT_MAX_AGE_MS = 10 * 60_000;
-/** How long Token Monitor may go quiet before Screddy puts its own SR icon back. */
-export const TRAY_HANDOFF_MAX_AGE_MS = 2 * 60_000;
 const MAX_LIMIT_ROWS = 8;
 
 const Finite = Schema.Number.check(Schema.isFinite());
@@ -21,7 +19,7 @@ const Finite = Schema.Number.check(Schema.isFinite());
 const TokenMonitorSnapshot = Schema.Struct({
   version: Schema.Literal(1),
   writtenAt: Finite,
-  /** Token Monitor is drawing the speedometer's SR mark as its menu-bar icon. */
+  /** The plug-in has drawn its menu-bar icon; macOS may still hide it, so this is not proof it shows. */
   trayIcon: Schema.Boolean,
   today: Schema.NullOr(
     Schema.Struct({
@@ -52,18 +50,12 @@ export interface TokenMonitorMenuState {
 const info = (label: string): MenuItemConstructorOptions => ({ label, enabled: false });
 
 /**
- * One SR logo in the menu bar: while Token Monitor draws the speedometer as its icon,
- * that icon opens Token Monitor's panel and Screddy leaves its own out.
+ * Screddy's SR logo always stays in the menu bar: Token Monitor's own icon can be hidden by a
+ * full menu bar or by macOS settings, and nothing outside it can tell. With Token Monitor
+ * installed, a click opens its panel; a right-click opens Screddy's menu.
  */
-export const tokenMonitorShowsSrIcon = (
-  { installed, snapshot }: TokenMonitorMenuState,
-  now: number,
-) =>
-  installed &&
-  snapshot !== null &&
-  snapshot.trayIcon &&
-  snapshot.writtenAt <= now &&
-  now - snapshot.writtenAt <= TRAY_HANDOFF_MAX_AGE_MS;
+export const srLogoClickAction = (installed: boolean, button: "left" | "right") =>
+  installed && button === "left" ? ("open-token-monitor" as const) : ("menu" as const);
 
 export function tokenMonitorMenuItems(
   { installed, snapshot }: TokenMonitorMenuState,
