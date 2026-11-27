@@ -36,6 +36,8 @@ const secretFlagInText = new RegExp(
   `(^|\\s)(--?[\\w-]*${SECRET}[\\w-]*)(=|\\s+)${quotedValue}`,
   "gi",
 );
+// A secret in a URL query, as in ?token=… or &api_key=…; the rest of the URL stays.
+const secretQueryParam = new RegExp(`([?&][\\w.-]*${SECRET}[\\w.-]*=)[^&#\\s"']*`, "gi");
 // The name may start with the secret word itself, as in TOKEN=…
 const secretAssignmentInText = new RegExp(
   `(^|\\s)((?:[A-Za-z_][\\w-]*)?${SECRET}[\\w-]*=)${quotedValue}`,
@@ -57,7 +59,7 @@ export function commandLine(args: readonly string[]): string {
       return "[hidden]";
     }
     if (secretFlag.test(arg)) hideNext = true;
-    return arg.replace(secretAssignment, "$1[hidden]");
+    return arg.replace(secretAssignment, "$1[hidden]").replace(secretQueryParam, "$1[hidden]");
   });
   return cap(shown.join(" "));
 }
@@ -67,7 +69,8 @@ function shellCommand(command: string): string {
   return cap(
     command
       .replace(secretFlagInText, "$1$2$3[hidden]")
-      .replace(secretAssignmentInText, "$1$2[hidden]"),
+      .replace(secretAssignmentInText, "$1$2[hidden]")
+      .replace(secretQueryParam, "$1[hidden]"),
   );
 }
 

@@ -133,6 +133,9 @@ describe("commandLine", () => {
         "3774",
       ]),
     ).toBe("node server.js --api-key [hidden] TOKEN=[hidden] --password=[hidden] --port 3774");
+    expect(commandLine(["/usr/bin/curl", "https://example.test/hook?secret=s1&id=2"])).toBe(
+      "/usr/bin/curl https://example.test/hook?secret=[hidden]&id=2",
+    );
     const long = commandLine(["/opt/run", "x".repeat(400)]);
     expect(long.length).toBeLessThanOrEqual(240);
     expect(long.endsWith("…")).toBe(true);
@@ -189,6 +192,15 @@ describe("cronAutomations", () => {
       state: "idle",
     });
     expect(new Set(jobs.map(({ id }) => id)).size).toBe(jobs.length);
+  });
+
+  it("hides secret values in URL query strings", () => {
+    const [job] = cronAutomations(
+      "*/5 * * * * curl -s 'https://example.test/hook?id=7&token=abc123&x=1' https://example.test/?api_key=k\n",
+    );
+    expect(job?.command).toBe(
+      "curl -s 'https://example.test/hook?id=7&token=[hidden]&x=1' https://example.test/?api_key=[hidden]",
+    );
   });
 
   it("hides bare secret assignments at the start of a word", () => {
