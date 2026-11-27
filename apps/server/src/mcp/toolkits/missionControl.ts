@@ -74,7 +74,7 @@ const MissionControlReplyPreview = Tool.make("mission_control_reply_preview", {
 const MissionControlAct = Tool.make("mission_control_act", {
   ...shared,
   description:
-    "Act on Mission Control. kind: reply (itemId, revision from mission_control_reply_preview, body; sends the email), complete-linear or complete-task (itemId), create-task (title, optional notes and due YYYY-MM-DD), update-task (itemId plus only the fields to change; due null clears it). Confirm a reply with the user before sending.",
+    "Act on an item from mission_control_priorities (or a task you just added). kind: reply (itemId, revision from mission_control_reply_preview, body; sends the email), complete-linear or complete-task (itemId), create-task (title, optional notes and due YYYY-MM-DD), update-task (itemId plus only the fields to change; due null clears it). Confirm a reply with the user before sending.",
   parameters: Schema.Struct({
     kind: Schema.Literals([
       "reply",

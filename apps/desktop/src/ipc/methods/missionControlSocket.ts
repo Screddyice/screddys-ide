@@ -56,6 +56,59 @@ async function answer(raw: string, dispatch: Dispatch) {
   }
 }
 
+/** How many item ids from recent answers an app may still act on. */
+const SHOWN_LIMIT = 2_000;
+const unshown = { ok: false, error: "Read Mission Control again, then act on an item it shows." };
+
+function fields(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+/**
+ * Connected apps act only on items Mission Control showed them: the unrestricted items of a recent
+ * priorities answer, or a task they just added. A restricted item's id never qualifies, even if the
+ * app learned it some other way.
+ */
+export function guardShownItems(dispatch: Dispatch): Dispatch {
+  const shown = new Set<string>();
+  const remember = (id: unknown) => {
+    if (typeof id !== "string") return;
+    shown.delete(id);
+    shown.add(id);
+    const oldest = shown.values().next().value;
+    if (shown.size > SHOWN_LIMIT && oldest !== undefined) shown.delete(oldest);
+  };
+  return async (op, payload) => {
+    const action = op === "action" ? fields(payload) : undefined;
+    const target = op === "reply-preview" ? payload : action?.itemId;
+    if (
+      (op === "reply-preview" || (action && action.kind !== "create-task")) &&
+      !(typeof target === "string" && shown.has(target))
+    ) {
+      return unshown;
+    }
+    const result = await dispatch(op, payload);
+    if (op === "priorities") {
+      for (const item of Array.isArray(fields(result).items)
+        ? (fields(result).items as unknown[])
+        : []) {
+        if (fields(fields(item).taskContext).restricted !== true) remember(fields(item).id);
+      }
+    } else if (action?.kind === "create-task" && fields(result).ok === true) {
+      remember(fields(result).itemId);
+    }
+    return result;
+  };
+}
+
+/**
+ * Where the socket binds before it is renamed into place. Electron's Node caps a Unix socket path
+ * at 104 bytes, so this is never longer than the final path: if that one fits, this one does too.
+ */
+export function socketStagingPath(path: string) {
+  return NodePath.join(NodePath.dirname(path), `.${process.pid}`);
+}
+
 /** Whether another running app already answers on this socket. */
 function answering(path: string) {
   return new Promise<boolean>((resolve) => {
@@ -110,7 +163,7 @@ export async function serveMissionControlSocket(path: string, dispatch: Dispatch
   const stop = () => new Promise<void>((resolve) => server.close(() => resolve()));
   // Bind beside the final path, restrict it, then rename it into place in one step, so the socket
   // is never reachable before it is 0600 and a stale file is replaced atomically.
-  const staging = `${path}.${process.pid}`;
+  const staging = socketStagingPath(path);
   await NodeFSP.rm(staging, { force: true });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -163,8 +216,9 @@ export const installMissionControlSocket = Effect.fn("desktop.ipc.installMission
     const server = yield* Effect.acquireRelease(
       Effect.tryPromise({
         try: () =>
-          serveMissionControlSocket(missionControlSocketPath(environment.baseDir), (op, payload) =>
-            runPromise(operations[op].handler(payload)),
+          serveMissionControlSocket(
+            missionControlSocketPath(environment.baseDir),
+            guardShownItems((op, payload) => runPromise(operations[op].handler(payload))),
           ),
         catch: (cause) => new MissionControlSocketError({ cause }),
       }),
