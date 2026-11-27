@@ -299,9 +299,11 @@ describe("cronAutomations", () => {
         '0 8 * * * "/opt/tasks/backup">/tmp/out',
         "0 9 * * * /opt/run>/tmp/out 2>&1",
         String.raw`0 10 * * * "/opt/tasks/say\"hi"`,
+        // Inside double quotes a backslash escapes only $ ` " \ and newline; before q it stays.
+        String.raw`0 11 * * * "/opt/tasks/say\q"`,
       ].join("\n"),
     );
-    expect(shell.map((job) => job.name)).toEqual(["backup", "run", 'say"hi']);
+    expect(shell.map((job) => job.name)).toEqual(["backup", "run", 'say"hi', String.raw`say\q`]);
     // An escaped quote must not end a hidden value early.
     const [escaped] = cronAutomations(String.raw`0 8 * * * TOKEN="a\"b c" /opt/run` + "\n");
     expect(escaped?.command).toBe("TOKEN=[hidden] /opt/run");

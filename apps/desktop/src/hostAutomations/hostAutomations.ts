@@ -58,7 +58,8 @@ const shellQuoting = /"((?:[^"\\]|\\.)*)"|'([^']*)'|\\(.)/g;
 /** The word as the shell passes it on: quotes removed, backslash escapes resolved. */
 function unquote(word: string): string {
   return word.replace(shellQuoting, (_, double?: string, single?: string, escaped?: string) =>
-    double !== undefined ? double.replace(/\\(.)/g, "$1") : (single ?? escaped ?? ""),
+    // Inside double quotes a backslash escapes only $ ` " \ and newline; elsewhere it stays.
+    double !== undefined ? double.replace(/\\([$`"\\\n])/g, "$1") : (single ?? escaped ?? ""),
   );
 }
 const leadingAssignments = new RegExp(`^(?:[A-Za-z_]\\w*=(?:${quotedValue})?(?:\\s+|$))+`);
