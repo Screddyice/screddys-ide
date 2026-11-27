@@ -132,7 +132,11 @@ it("does not resend after a send was attempted without an acknowledgement", asyn
 const slackBindings: Bindings = { ...bindings, slack: "slack-owner" };
 const slackId = "slack:C0LAUNCH:1794952800.000100";
 
-function slackFixture() {
+function slackFixture(
+  channel = "C0LAUNCH",
+  info: Record<string, unknown> = { id: "C0LAUNCH", name: "launch" },
+) {
+  let history: Record<string, unknown>[] = [];
   let thread: Record<string, unknown>[] = [
     { ts: "1794952800.000100", user: "U0OTHER", text: "Launch plan is in the doc" },
     { ts: "1794952860.000200", user: "U0OTHER", text: "<@U0ME> can you sign off?" },
@@ -147,11 +151,13 @@ function slackFixture() {
     expect([toolkit, account]).toEqual(["slack", "slack-owner"]);
     if (path === "/api/auth.test") return token;
     if (path === "/api/conversations.info") {
-      expect(params).toEqual({ channel: "C0LAUNCH" });
-      return { channel: { id: "C0LAUNCH", name: "launch" } };
+      expect(params).toEqual({ channel });
+      return { channel: info };
     }
+    if (path === "/api/conversations.history") return { messages: history, has_more: false };
+    if (path === "/api/users.info") return { user: { real_name: "Other Person" } };
     expect(path).toBe("/api/conversations.replies");
-    expect(params).toMatchObject({ channel: "C0LAUNCH", ts: "1794952800.000100" });
+    expect(params).toMatchObject({ channel, ts: "1794952800.000100" });
     return { messages: thread, has_more: false };
   });
   const postSlackReply = vi.fn<Connector["postSlackReply"]>(
@@ -166,6 +172,9 @@ function slackFixture() {
     postSlackReply,
     setThread(messages: Record<string, unknown>[]) {
       thread = messages;
+    },
+    setHistory(messages: Record<string, unknown>[]) {
+      history = messages;
     },
     setToken(value: Record<string, unknown>) {
       token = value;
@@ -274,6 +283,88 @@ it("does not repost after Slack fails to confirm the reply came from you", async
     await expect(sendMissionControlReply(api, slackBindings, directory, reply)).rejects.toThrow(
       /Check the thread in Slack/,
     );
+    expect(postSlackReply).toHaveBeenCalledTimes(1);
+  } finally {
+    await NodeFSP.rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("refuses a Slack reply after the message you saw is edited or a DM gets a new message", async () => {
+  const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "screddy-reply-"));
+  try {
+    // An edit that keeps the mention still changes what you'd be replying to.
+    const channel = slackFixture();
+    const before = await previewMissionControlReply(channel.api, slackBindings, slackId);
+    channel.setThread([
+      { ts: "1794952800.000100", user: "U0OTHER", text: "Launch plan is in the doc" },
+      {
+        ts: "1794952860.000200",
+        user: "U0OTHER",
+        text: "<@U0ME> can you sign off on the new budget?",
+        edited: { user: "U0OTHER", ts: "1794952870.000000" },
+      },
+    ]);
+    await expect(
+      sendMissionControlReply(channel.api, slackBindings, directory, {
+        kind: "reply",
+        itemId: slackId,
+        revision: before.revision,
+        body: "Yes",
+      }),
+    ).rejects.toThrow(/thread changed/);
+
+    // In a DM with no thread, a new message from the other person changes it too.
+    const dmId = "slack:D0DIRECT:1794952800.000100";
+    const dm = slackFixture("D0DIRECT", { id: "D0DIRECT", is_im: true, user: "U0OTHER" });
+    dm.setThread([{ ts: "1794952800.000100", user: "U0OTHER", text: "Got a minute?" }]);
+    const opened = await previewMissionControlReply(dm.api, slackBindings, dmId);
+    expect(opened).toMatchObject({ to: "Direct message with Other Person" });
+    dm.setHistory([{ ts: "1794952900.000900", user: "U0OTHER", text: "Never mind, sorted" }]);
+    await expect(
+      sendMissionControlReply(dm.api, slackBindings, directory, {
+        kind: "reply",
+        itemId: dmId,
+        revision: opened.revision,
+        body: "Sure",
+      }),
+    ).rejects.toThrow(/thread changed/);
+    expect(channel.postSlackReply).not.toHaveBeenCalled();
+    expect(dm.postSlackReply).not.toHaveBeenCalled();
+  } finally {
+    await NodeFSP.rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("does not post again after an unconfirmed reply, even once the thread moves on", async () => {
+  const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "screddy-reply-"));
+  try {
+    const { api, postSlackReply, setThread } = slackFixture();
+    // Slack drops the acknowledgement; the reply hasn't shown up in the thread yet.
+    postSlackReply.mockRejectedValue(new Error("socket hang up"));
+    const preview = await previewMissionControlReply(api, slackBindings, slackId);
+    await expect(
+      sendMissionControlReply(api, slackBindings, directory, {
+        kind: "reply",
+        itemId: slackId,
+        revision: preview.revision,
+        body: "Ok",
+      }),
+    ).rejects.toThrow(/Check the thread in Slack/);
+    setThread([
+      { ts: "1794952800.000100", user: "U0OTHER", text: "Launch plan is in the doc" },
+      { ts: "1794952860.000200", user: "U0OTHER", text: "<@U0ME> can you sign off?" },
+      { ts: "1794952950.000700", user: "U0THIRD", text: "Bump" },
+    ]);
+    const refreshed = await previewMissionControlReply(api, slackBindings, slackId);
+    expect(refreshed.revision).not.toBe(preview.revision);
+    await expect(
+      sendMissionControlReply(api, slackBindings, directory, {
+        kind: "reply",
+        itemId: slackId,
+        revision: refreshed.revision,
+        body: "Ok",
+      }),
+    ).rejects.toThrow(/Check the thread in Slack/);
     expect(postSlackReply).toHaveBeenCalledTimes(1);
   } finally {
     await NodeFSP.rm(directory, { recursive: true, force: true });
