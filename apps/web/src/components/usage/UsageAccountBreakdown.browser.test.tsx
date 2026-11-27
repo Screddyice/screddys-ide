@@ -71,6 +71,9 @@ it("ranks each account folder by tokens, names added accounts and links to Setti
   const text = document.body.textContent ?? "";
   expect(text.indexOf("Team Nebula")).toBeLessThan(text.indexOf("/data/.claude"));
   await expect.element(screen.getByText("Claude Code · folder not found")).toBeVisible();
+  // A named account shows its home; an unnamed folder is already named by it.
+  await expect.element(screen.getByText("Claude Code · /data/team")).toBeVisible();
+  await expect.element(screen.getByText("/data/.claude", { exact: true })).toBeVisible();
   await screen.getByRole("button", { name: "Add or manage usage accounts" }).click();
   await expect.poll(() => screen.router?.state.location.pathname).toBe("/settings/providers");
 });

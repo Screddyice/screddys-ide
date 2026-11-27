@@ -30,12 +30,13 @@ function period(usage: MergedUsage): DesktopTokenUsagePeriod {
 
 const modelLabel = (model: string) => model.replace(/\p{C}/gu, " ").slice(0, 120);
 
-/** "Claude Ultra Subscription" reads as "Ultra" beside the provider's own name. */
-function planName(authLabel: string): string {
+/** "Claude Ultra Subscription" reads as "Ultra" beside the provider's own name; "Grok account" names no plan. */
+function planName(authLabel: string): string | null {
   const name = authLabel
     .replace(/\s+subscription$/i, "")
     .replace(/^(claude|chatgpt|codex|cursor|grok|supergrok)\s+/i, "")
     .trim();
+  if (/^account$/i.test(name)) return null;
   return (name || authLabel).slice(0, 120);
 }
 
@@ -95,10 +96,11 @@ export function buildDesktopUsageSnapshot(
     providers: month.providers
       .toSorted((a, b) => b.totalTokens - a.totalTokens)
       .map((provider) => {
-        const plan = plans.get(provider.provider);
+        const authLabel = plans.get(provider.provider);
+        const plan = authLabel ? planName(authLabel) : null;
         return {
           label: PROVIDER_PRESENTATION[provider.provider].label,
-          ...(plan ? { plan: planName(plan) } : {}),
+          ...(plan ? { plan } : {}),
           totalTokens: provider.totalTokens,
           models: month.models
             .filter((model) => model.provider === provider.provider)

@@ -44,7 +44,7 @@ export function UsageLivePanel() {
         <Figure
           label="Throughput"
           value={rate === null ? "Measuring…" : `${formatTokens(rate)}/min`}
-          detail={rate === null ? "Needs two reads a minute apart" : "Tokens per minute"}
+          detail={rate === null ? "Ready after a minute" : "Over the last minute"}
         />
         <Figure label="This week" value={formatTokens(snapshot.week.totalTokens)} />
         <Figure

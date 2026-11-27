@@ -1,9 +1,9 @@
 import { useState } from "react";
 
 import type { EnvironmentUsageStatus } from "../../state/usage";
-import { tokensPerMinute, type TokenSample } from "../MissionControl.logic";
+import { addTokenSample, throughputFromSamples, type TokenSample } from "../MissionControl.logic";
 
-/** Tokens per minute between the last two usage reads of today's total; null until two reads exist. */
+/** Tokens per minute across the last minute of usage reads of today's total; null until then. */
 export function useTokenThroughput(
   environments: readonly EnvironmentUsageStatus[],
   todayTokens: number | null,
@@ -12,13 +12,10 @@ export function useTokenThroughput(
     0,
     ...environments.map(({ summary }) => (summary ? Date.parse(summary.readAt) : 0)),
   );
-  const [samples, setSamples] = useState<{
-    readonly previous: TokenSample | null;
-    readonly current: TokenSample | null;
-  }>({ previous: null, current: null });
-  // Each new usage read becomes the current sample and pushes the last one back.
-  if (todayTokens !== null && readAtMs > 0 && samples.current?.atMs !== readAtMs) {
-    setSamples({ previous: samples.current, current: { tokens: todayTokens, atMs: readAtMs } });
+  const [samples, setSamples] = useState<readonly TokenSample[]>([]);
+  // Each new usage read joins the samples; the rate spans at least 45 seconds of them.
+  if (todayTokens !== null && readAtMs > 0 && samples.at(-1)?.atMs !== readAtMs) {
+    setSamples(addTokenSample(samples, { tokens: todayTokens, atMs: readAtMs }));
   }
-  return tokensPerMinute(samples.previous, samples.current);
+  return throughputFromSamples(samples);
 }

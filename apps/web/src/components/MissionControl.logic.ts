@@ -88,3 +88,30 @@ export function tokensPerMinute(
   if (minutes <= 0 || current.tokens < previous.tokens) return null;
   return Math.round((current.tokens - previous.tokens) / minutes);
 }
+
+const MIN_THROUGHPUT_GAP_MS = 45_000;
+const KEEP_SAMPLES_MS = 5 * 60_000;
+
+/** Adds a read of today's total, keeping the last five minutes; a smaller total is a new day. */
+export function addTokenSample(
+  samples: readonly TokenSample[],
+  sample: TokenSample,
+): readonly TokenSample[] {
+  const latest = samples.at(-1);
+  if (latest !== undefined && sample.tokens < latest.tokens) return [sample];
+  return [
+    ...samples.filter(({ atMs }) => atMs < sample.atMs && sample.atMs - atMs <= KEEP_SAMPLES_MS),
+    sample,
+  ];
+}
+
+/**
+ * Tokens per minute since the newest read at least 45 seconds old. The menu bar, Mission Control
+ * and the Usage page each re-read usage every minute, so consecutive reads can be seconds apart.
+ */
+export function throughputFromSamples(samples: readonly TokenSample[]): number | null {
+  const current = samples.at(-1);
+  if (current === undefined) return null;
+  const baseline = samples.findLast(({ atMs }) => current.atMs - atMs >= MIN_THROUGHPUT_GAP_MS);
+  return tokensPerMinute(baseline ?? null, current);
+}
