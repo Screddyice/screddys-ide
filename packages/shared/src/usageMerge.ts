@@ -258,7 +258,7 @@ function ownedContribution(
   };
 }
 
-function bucketTokens(bucket: UsageBucket): number {
+export function bucketTokens(bucket: UsageBucket): number {
   // reasoningTokens is a subset of outputTokens and must not be added again.
   return (
     bucket.totals.uncachedInputTokens +
