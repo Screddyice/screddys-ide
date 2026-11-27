@@ -72,9 +72,16 @@ function periodMenu(label: string, usage: DesktopTokenUsagePeriod): MenuItemCons
   };
 }
 
-/** The text beside the menu bar logo: today's token total, nothing until usage has loaded. */
+/**
+ * The text beside the menu bar logo: today's token total, then the throughput once a second
+ * usage read has measured it. Nothing until usage has loaded.
+ */
 export function usageTrayTitle({ summary }: DesktopTokenUsageMenuState): string {
-  return summary === null ? "" : formatTokens(summary.today.totalTokens);
+  if (summary === null) return "";
+  const today = formatTokens(summary.today.totalTokens);
+  return summary.tokensPerMinute === undefined
+    ? today
+    : `${today} · ${formatTokens(summary.tokensPerMinute)}/min`;
 }
 
 /** The menu bar icon's tooltip: today's tokens, then the throughput once it is measured. */
@@ -153,7 +160,7 @@ function startTokenUsageTray(iconPath: string, actions: UsageMenuActions) {
     const current = JSON.stringify([usage, monitor.map((item) => item.label ?? item.type)]);
     if (current === previous) return;
     menu = Menu.buildFromTemplate(usageMenuTemplate(usage, actions, monitor));
-    // Today's total sits beside the logo; throughput and the breakdown stay in the tooltip and menu.
+    // Today's total and the throughput sit beside the logo; the breakdown stays in the menu.
     // Fixed-width digits keep the item from shifting as the count changes.
     tray.setTitle(usageTrayTitle(usage), { fontType: "monospacedDigit" });
     tray.setToolTip(usageTrayTooltip(usage));
