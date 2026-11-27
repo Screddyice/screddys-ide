@@ -142,7 +142,6 @@ const bootstrap = Effect.gen(function* () {
   );
 
   yield* snapShot.initialize;
-  yield* DesktopStaleServer.takeOverLocalServerForThisApp();
 
   if (!settings.localEnvironmentEnabled) {
     yield* logBootstrapInfo("bootstrap skipping local environment (disabled in settings)");
@@ -151,6 +150,10 @@ const bootstrap = Effect.gen(function* () {
     }
     return;
   }
+
+  // Only a launch that starts its own server stops this install's background server; with the
+  // local environment off the app may be paired with that server.
+  yield* DesktopStaleServer.takeOverLocalServerForThisApp();
 
   const pool = yield* DesktopBackendPool.DesktopBackendPool;
   const primaryBackend = yield* pool.primary;

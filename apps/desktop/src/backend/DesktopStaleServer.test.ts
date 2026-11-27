@@ -111,7 +111,7 @@ describe("ownedHomeRecovery", () => {
   const recovery = (results: ReadonlyArray<TakeOverResult>) => {
     const calls: Array<string> = [];
     let next = 0;
-    const recover = ownedHomeRecovery({
+    const { recover, reset } = ownedHomeRecovery({
       takeOver: Effect.sync(() => {
         calls.push("takeOver");
         return results[Math.min(next++, results.length - 1)]!;
@@ -121,7 +121,7 @@ describe("ownedHomeRecovery", () => {
       pause: Effect.void,
       maxAttempts: 3,
     });
-    return { recover, calls };
+    return { recover, reset, calls };
   };
   const stopped: TakeOverResult = { _tag: "Stopped", pid: 1, serverVersion: "0.1.71" };
 
@@ -152,6 +152,25 @@ describe("ownedHomeRecovery", () => {
         yield* recover;
         expect(calls).toEqual(["takeOver", "giveUp"]);
       }
+    }),
+  );
+
+  it.effect("counts attempts again after the server has started", () =>
+    Effect.gen(function* () {
+      const { recover, reset, calls } = recovery([stopped]);
+      for (let attempt = 0; attempt < 3; attempt++) yield* recover;
+      yield* reset;
+      yield* recover;
+      expect(calls).toEqual([
+        "takeOver",
+        "restart",
+        "takeOver",
+        "restart",
+        "takeOver",
+        "restart",
+        "takeOver",
+        "restart",
+      ]);
     }),
   );
 
