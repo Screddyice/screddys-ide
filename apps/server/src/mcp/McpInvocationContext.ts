@@ -176,6 +176,19 @@ export const hasComputerUseThread = (): boolean => {
   );
 };
 
+/** An app connected through Use in another app: not an agent thread, not another environment's link. */
+export const isAppClient = (scope: McpInvocationScope | undefined): boolean =>
+  scope !== undefined &&
+  scope.thread === undefined &&
+  scope.client !== undefined &&
+  scope.client.linked !== true;
+
+/** `McpSchema.EnabledWhen` for tools only such an app may see, such as Mission Control's. */
+export const appClientsOnly = (): boolean => {
+  const fiber = Fiber.getCurrent();
+  return isAppClient(fiber && Context.getOrUndefined(fiber.context, McpInvocationContext));
+};
+
 /** `McpSchema.EnabledWhen` for tools that only serve links, hidden while the beta is off. */
 export const hiddenWhileLinksOff = (): boolean => {
   const fiber = Fiber.getCurrent();
