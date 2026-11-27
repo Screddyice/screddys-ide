@@ -170,7 +170,7 @@ it.layer(NodeServices.layer)("DesktopTokenMonitorPlugin", (it) => {
       const { fs, path, manifest } = yield* setup;
       const released: Record<string, string> = {
         "1.6.5": "ab1a10537fb16b3cdbcd089ec0e730242aa8413cc06eb4fd616d726fb221c42c",
-        "1.6.6": "b27e18125773cf44b8c67abea0a452a881bb7e35d71367482abc7a01ec07d08b",
+        "1.6.6": "96a1526fdbace3f84b868513386993b054ac26c9f8ad66100f69a2797e2e02cd",
         "1.6.7": "f163e40f8ddbc1499871702e92ae0c5b30dd58ca3beeebf616d4daf12fc41890",
       };
       const hash = NodeCrypto.createHash("sha256");
