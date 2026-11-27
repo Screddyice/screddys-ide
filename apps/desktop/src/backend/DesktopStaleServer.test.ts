@@ -81,7 +81,7 @@ describe("takeOverLocalServer", () => {
   it.effect("never signals a server from another program or install", () =>
     Effect.gen(function* () {
       // A reused PID, or the stock `t3` service of another install.
-      for (const command of ["/usr/bin/vim notes.txt", "/Users/me/.t3/runtime/t3 serve"]) {
+      for (const command of ["/usr/bin/vim notes.txt", "/opt/example/.t3/runtime/t3 serve"]) {
         const { value, signalled } = probe({ contents: runtimeState("0.1.48"), command });
         const result = yield* takeOverLocalServer({ backendEntryPath: ENTRY, probe: value });
         expect(result).toEqual({ _tag: "Foreign", pid: 41374 });
