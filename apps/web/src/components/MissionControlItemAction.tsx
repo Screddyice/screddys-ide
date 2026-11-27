@@ -20,6 +20,29 @@ import { toastManager } from "./ui/toast";
 
 type ReplyPreview = Extract<MissionControlReplyPreview, { ok: true }>;
 
+const replyCopy = {
+  email: {
+    title: "Reply to email",
+    checking: "Checking the email…",
+    loadFailed: "Could not load this email from Gmail.",
+    unconfirmed: "Gmail did not confirm the send. Check Sent in Gmail before sending again.",
+    open: "Open in Gmail",
+    review: "Review latest email",
+    send: "Send reply",
+    sending: "Sending…",
+  },
+  slack: {
+    title: "Reply in Slack",
+    checking: "Checking the Slack thread…",
+    loadFailed: "Could not load this thread from Slack.",
+    unconfirmed: "Slack did not confirm the reply. Check the thread in Slack before sending again.",
+    open: "Open in Slack",
+    review: "Review latest message",
+    send: "Post reply",
+    sending: "Posting…",
+  },
+};
+
 export function MissionControlItemAction({
   item,
   onDone,
@@ -84,7 +107,13 @@ export function MissionControlItemAction({
     );
   }
 
-  if (item.source !== "email" || !item.canReply || !bridge.getMissionControlReply) return null;
+  if (
+    (item.source !== "email" && item.source !== "slack") ||
+    !item.canReply ||
+    !bridge.getMissionControlReply
+  )
+    return null;
+  const copy = replyCopy[item.source];
 
   const loadPreview = async () => {
     setOpen(true);
@@ -96,7 +125,7 @@ export function MissionControlItemAction({
       if (result.ok) setPreview(result);
       else setError(result.error);
     } catch {
-      setError("Could not load this email from Gmail.");
+      setError(copy.loadFailed);
     } finally {
       setLoading(false);
     }
@@ -122,7 +151,7 @@ export function MissionControlItemAction({
       setOpen(false);
       onDone(result);
     } catch {
-      setError("Gmail did not confirm the send. Check Sent in Gmail before sending again.");
+      setError(copy.unconfirmed);
     } finally {
       pending.current = false;
       setWorking(false);
@@ -147,12 +176,12 @@ export function MissionControlItemAction({
       </Button>
       <DialogPopup>
         <DialogHeader>
-          <DialogTitle>Reply to email</DialogTitle>
+          <DialogTitle>{copy.title}</DialogTitle>
           <DialogDescription>{preview?.subject || item.title}</DialogDescription>
         </DialogHeader>
         {loading && (
           <p role="status" className="text-sm text-muted-foreground">
-            Checking the email…
+            {copy.checking}
           </p>
         )}
         {preview && (
@@ -196,7 +225,7 @@ export function MissionControlItemAction({
         <DialogFooter>
           {item.url && (
             <Button variant="outline" onClick={() => void bridge.openExternal(item.url!)}>
-              Open in Gmail
+              {copy.open}
             </Button>
           )}
           {error && (
@@ -205,14 +234,14 @@ export function MissionControlItemAction({
               disabled={working || loading}
               onClick={() => void loadPreview()}
             >
-              Review latest email
+              {copy.review}
             </Button>
           )}
           <Button
             disabled={!preview || !body.trim() || working || loading}
             onClick={() => void send()}
           >
-            {working ? "Sending…" : "Send reply"}
+            {working ? copy.sending : copy.send}
           </Button>
         </DialogFooter>
       </DialogPopup>

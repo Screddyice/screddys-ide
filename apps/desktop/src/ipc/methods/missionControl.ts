@@ -326,7 +326,9 @@ export const getMissionControlReply = makeIpcMethod({
           ok: false as const,
           error: isMissionControlActionError(error)
             ? error.message
-            : "Gmail couldn't verify this message or mailbox.",
+            : itemId.startsWith("slack:")
+              ? "Slack couldn't verify this thread or account."
+              : "Gmail couldn't verify this message or mailbox.",
         };
       }
     });
@@ -368,7 +370,9 @@ export const runMissionControlAction = makeIpcMethod({
         const outcome = await runAction(api, bindings, environment.baseDir, request);
         const source =
           request.kind === "reply"
-            ? prioritySourceKey("email", request.itemId.split(":")[1]!)
+            ? request.itemId.startsWith("slack:")
+              ? prioritySourceKey("slack", "Slack")
+              : prioritySourceKey("email", request.itemId.split(":")[1]!)
             : request.kind === "complete-linear"
               ? prioritySourceKey("linear", "Linear")
               : prioritySourceKey("tasks", "Personal");

@@ -174,6 +174,73 @@ it("sends the reviewed reply and completes the exact Linear row on its own butto
   }
 });
 
+it("replies to a Slack item in its thread after showing where the reply will go", async () => {
+  const mention: MissionControlItem = {
+    id: "slack:C0LAUNCH:1794952800.000100",
+    source: "slack",
+    account: "Slack",
+    title: "@you can you sign off?",
+    detail: "Mention",
+    url: null,
+    activity: "2026-11-18T00:00:00Z",
+    due: null,
+    urgency: "normal",
+    canReply: true,
+  };
+  const getMissionControl = vi.fn<DesktopBridge["getMissionControl"]>().mockResolvedValue({
+    configured: true,
+    fetchedAt: null,
+    mailboxes: [],
+    items: [mention],
+    sources: [],
+    context: null,
+    nextCursor: null,
+  });
+  const revision = "b".repeat(64);
+  const getMissionControlReply = vi
+    .fn<DesktopBridge["getMissionControlReply"]>()
+    .mockResolvedValue({
+      ok: true,
+      from: "@owner (Example)",
+      to: "#launch",
+      subject: "Launch plan is in the doc",
+      snippet: "@you can you sign off?",
+      revision,
+    });
+  const runMissionControlAction = vi
+    .fn<DesktopBridge["runMissionControlAction"]>()
+    .mockResolvedValue({ ok: true, message: "Reply posted in Slack." });
+  const previousBridge = window.desktopBridge;
+  window.desktopBridge = {
+    ...previousBridge,
+    getMissionControl,
+    getMissionControlReply,
+    runMissionControlAction,
+    getLocalEnvironmentEnabled: () => false,
+    getLocalEnvironmentBootstraps: () => [],
+  } as DesktopBridge;
+  try {
+    await using screen = await render(<MissionControlPriorities />);
+    await screen.getByRole("button", { name: "Reply", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Reply in Slack" });
+    await expect.element(dialog.getByText("#launch")).toBeVisible();
+    await expect.element(dialog.getByText("@owner (Example)")).toBeVisible();
+    await dialog.getByRole("textbox", { name: "Your reply" }).fill("Signed off.");
+    await dialog.getByRole("button", { name: "Post reply" }).click();
+    await expect.element(screen.getByText("@you can you sign off?")).not.toBeInTheDocument();
+    expect(getMissionControlReply).toHaveBeenCalledExactlyOnceWith(mention.id);
+    expect(runMissionControlAction).toHaveBeenCalledExactlyOnceWith({
+      kind: "reply",
+      itemId: mention.id,
+      revision,
+      body: "Signed off.",
+    });
+  } finally {
+    if (previousBridge) window.desktopBridge = previousBridge;
+    else Reflect.deleteProperty(window, "desktopBridge");
+  }
+});
+
 it("filters the cross-source queue and pages through mail for the selected account", async () => {
   const item: MissionControlItem = {
     id: "task-1",
