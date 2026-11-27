@@ -58,7 +58,7 @@ export function UsageAccountSettings({
   const remove = async (id: string, account: UsageAccountConfig) => {
     const confirmed = await ensureLocalApi()
       .dialogs.confirm(
-        `Remove ${account.label}?\nIts usage stops counting toward the totals. The folder and its transcripts are left as they are.`,
+        `Remove ${account.label}?\nScreddy stops reading this folder for the account, but a folder it reads by default, such as ~/.claude, keeps counting. To leave a folder out of the totals, turn it off instead. The folder and its transcripts are left as they are.`,
         { variant: "destructive" },
       )
       .catch(() => false);
