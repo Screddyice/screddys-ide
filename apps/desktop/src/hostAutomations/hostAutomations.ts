@@ -36,8 +36,9 @@ const secretFlagInText = new RegExp(
   `(^|\\s)(--?[\\w-]*${SECRET}[\\w-]*)(=|\\s+)${quotedValue}`,
   "gi",
 );
+// The name may start with the secret word itself, as in TOKEN=…
 const secretAssignmentInText = new RegExp(
-  `(^|\\s)([A-Za-z_][\\w-]*${SECRET}[\\w-]*=)${quotedValue}`,
+  `(^|\\s)((?:[A-Za-z_][\\w-]*)?${SECRET}[\\w-]*=)${quotedValue}`,
   "gi",
 );
 
@@ -76,7 +77,13 @@ function describeCalendarEntry(entry: Obj): string {
   const day = numberField(entry, "Day");
   const weekday = numberField(entry, "Weekday");
   const month = numberField(entry, "Month");
-  const at = hour === undefined ? "" : ` at ${pad(hour)}:${pad(minute ?? 0)}`;
+  // launchd treats a missing key as "every", so an hour without a minute runs each minute of it.
+  const at =
+    hour === undefined
+      ? ""
+      : minute === undefined
+        ? `, every minute ${pad(hour)}:00–${pad(hour)}:59`
+        : ` at ${pad(hour)}:${pad(minute)}`;
   if (month !== undefined) return `Yearly on month ${month}, day ${day ?? 1}${at}`;
   if (weekday !== undefined) return `${WEEKDAYS[weekday] ?? `Weekday ${weekday}`}${at}`;
   if (day !== undefined) return `Monthly on day ${day}${at}`;
