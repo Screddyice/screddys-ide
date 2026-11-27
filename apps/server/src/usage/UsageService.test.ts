@@ -2167,10 +2167,48 @@ describe("UsageService", () => {
       assert.deepStrictEqual(
         summary.sources
           .flatMap((source) =>
-            source.account === undefined ? [] : [`${source.fingerprint.provider}:${source.account}`],
+            source.account === undefined
+              ? []
+              : [`${source.fingerprint.provider}:${source.account}`],
           )
           .toSorted(),
         ["claude:Main", "claude:Team Nebula", "codex:Codex backup"],
+      );
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("leaves out a folder whose usage account is turned off, even one read by default", () =>
+    Effect.gen(function* () {
+      const { transcript, settings, home } = yield* setup;
+      yield* Effect.promise(() => NodeFSP.writeFile(transcript, claudeLine(1, 5)));
+      const service = yield* UsageService.make.pipe(
+        Effect.provide(
+          layerService({
+            prefix: "usage-service-account-off-test",
+            home,
+            settings: {
+              ...settings,
+              usageAccounts: {
+                main: {
+                  provider: "claude",
+                  label: "Main",
+                  homePath: NodePath.join(home, "claude"),
+                  enabled: false,
+                },
+              },
+            },
+          }),
+        ),
+        Effect.provideService(HostProcess.HomeDirectory, home),
+      );
+      const summary = yield* service.readSummary(WINDOW);
+      assert.strictEqual(totalOutputTokens(summary), 0);
+      assert.isFalse(
+        summary.sources.some(
+          (source) =>
+            source.fingerprint.provider === "claude" &&
+            source.fingerprint.resolvedHomePath.endsWith(NodePath.join("claude", "projects")),
+        ),
       );
     }).pipe(Effect.scoped),
   );

@@ -339,23 +339,30 @@ export const make = Effect.gen(function* () {
     const homeDirectory = yield* HostProcess.HomeDirectory;
     for (const { driver, reader } of transcriptReaders) {
       const { provider, format, accountFolder } = reader;
-      const directories: Array<{ dir: string; fileName?: string; account?: string }> = (
-        yield* Effect.forEach(yield* usageInstances(driver, settings), (instance) =>
+      const directories: Array<{ dir: string; fileName?: string; account?: string }> =
+        (yield* Effect.forEach(yield* usageInstances(driver, settings), (instance) =>
           reader.directories(instance),
-        )
-      ).flat();
+        )).flat();
+      // A turned-off account's folder stays out of the totals, even one read by default.
+      const excluded = new Set<string>();
       for (const account of Object.values(settings.usageAccounts)) {
-        if (!account.enabled || account.provider !== provider || accountFolder === undefined) {
+        if (account.provider !== provider || accountFolder === undefined) continue;
+        const dir = path.resolve(
+          expandHomePath(account.homePath, homeDirectory),
+          accountFolder.dir,
+        );
+        if (!account.enabled) {
+          excluded.add(yield* fileSystem.realPath(dir).pipe(Effect.orElseSucceed(() => dir)));
           continue;
         }
-        const home = expandHomePath(account.homePath, homeDirectory);
         directories.push({
-          dir: path.resolve(home, accountFolder.dir),
+          dir,
           ...(accountFolder.fileName === undefined ? {} : { fileName: accountFolder.fileName }),
           account: account.label,
         });
       }
       for (const { dir: directory, fileName, account } of directories) {
+        if (excluded.has(directory)) continue;
         const sourceKey = provider + "\0" + directory;
         const previous = sourceCache.get(sourceKey);
         const dir = yield* fileSystem
@@ -379,6 +386,7 @@ export const make = Effect.gen(function* () {
           sourceCache.set(sourceKey, { dir, volumeId });
           cacheDirty = true;
         }
+        if (excluded.has(dir)) continue;
         const key = `${provider}\0${dir}`;
         if (account !== undefined && !accountLabels.has(key)) accountLabels.set(key, account);
         if (seen.has(key)) continue;
