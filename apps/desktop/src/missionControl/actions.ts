@@ -35,6 +35,8 @@ const messageId = /^<[^\s<>@]{1,250}@[^\s<>@]{1,250}>$/;
 const unconfirmed = "Gmail did not confirm the send. Check Sent in Gmail before sending again.";
 const slackItemId = /^slack:([CDG][A-Z0-9]{1,30}):(\d{1,12}\.\d{1,8})$/;
 const slackUser = /^[UW][A-Z0-9]{1,30}$/;
+/** How long an unconfirmed reply blocks another reply to the same item. */
+const PENDING_MS = 10 * 60_000;
 const slackUnconfirmed =
   "Slack did not confirm the reply. Check the thread in Slack before sending again.";
 
@@ -174,22 +176,20 @@ async function readSlackReply(api: Connector, bindings: Bindings, itemId: string
   if (!first || !anchor || !newest) {
     throw actionError("This Slack thread no longer has a message waiting on you.");
   }
-  const mine = (messages: Record<string, unknown>[]) =>
-    messages.some((message) => message.user === me && Number(message.ts) > Number(anchor.ts));
-  if (
-    mine(thread) ||
-    (dm &&
-      thread.length === 1 &&
-      mine(
-        slackPage(
+  // A DM message with no thread is answered in the DM itself, so later DM messages count too.
+  const later =
+    dm && thread.length === 1
+      ? slackPage(
           await api.proxy("slack", account, "/api/conversations.history", {
             channel,
             oldest: root,
             limit: 50,
           }),
-        ),
-      ))
-  ) {
+        )
+      : [];
+  const mine = (messages: Record<string, unknown>[]) =>
+    messages.some((message) => message.user === me && Number(message.ts) > Number(anchor.ts));
+  if (mine(thread) || mine(later)) {
     throw actionError("You already replied in this Slack thread.");
   }
   let to = info.name ? "#" + slackLine(info.name, me, 80) : "Slack channel";
@@ -216,7 +216,20 @@ async function readSlackReply(api: Connector, bindings: Bindings, itemId: string
     to,
     subject: slackLine(first.text, me, 170) || "Slack thread",
     snippet: slackLine(anchor.text, me, 320),
-    revision: hash([account, team, me, channel, root, str(anchor.ts), str(newest.ts), to]),
+    // Text and edit times are part of it, so an edited message or a new DM message needs a new look.
+    revision: hash([
+      account,
+      team,
+      me,
+      channel,
+      root,
+      str(anchor.ts),
+      str(newest.ts),
+      to,
+      ...[...thread, ...later].map((message) =>
+        JSON.stringify([str(message.ts), str(obj(message.edited).ts), str(message.text)]),
+      ),
+    ]),
   };
 }
 
@@ -330,6 +343,9 @@ export async function sendMissionControlReply(
   const receiptDirectory = NodePath.join(baseDir, "mission-control-replies");
   const receipt = NodePath.join(receiptDirectory, hash([request.itemId, request.revision]));
   const sentReceipt = receipt + ".sent";
+  // An unconfirmed reply may still land after the thread moves on and the revision changes, so
+  // it holds every revision of the item until it shows up in the thread or PENDING_MS passes.
+  const pending = NodePath.join(receiptDirectory, hash([request.itemId]) + ".pending");
   const done = { ok: true as const, message: slack ? "Reply posted in Slack." : "Reply sent." };
   if (
     await NodeFSP.access(sentReceipt).then(
@@ -346,6 +362,16 @@ export async function sendMissionControlReply(
   )
     throw actionError(unconfirmedReply);
 
+  const pendingSince = await NodeFSP.stat(pending).then(
+    (stat) => stat.mtimeMs,
+    () => null,
+  );
+  // @effect-diagnostics-next-line globalDate:off - Compared with a file's mtime in plain async code outside any Effect fiber.
+  if (pendingSince !== null && Date.now() - pendingSince < PENDING_MS) {
+    throw actionError(unconfirmedReply);
+  }
+
+  // Rechecks the thread: a reply that did land since shows up here as "already replied".
   const send = await (slack ? slackSend : gmailSend)(api, bindings, request);
   await NodeFSP.mkdir(receiptDirectory, { recursive: true, mode: 0o700 });
   try {
@@ -355,10 +381,13 @@ export async function sendMissionControlReply(
     throw error;
   }
 
+  await NodeFSP.writeFile(pending, "", { mode: 0o600 });
+
   // Reserve the exact incoming message before dispatch. A lost acknowledgement
   // cannot produce a second send, even after restarting the desktop.
   if (!(await send().catch(() => false))) throw actionError(unconfirmedReply);
   await NodeFSP.writeFile(sentReceipt, "", { flag: "wx", mode: 0o600 }).catch(() => {});
+  await NodeFSP.rm(pending, { force: true });
   return done;
 }
 
