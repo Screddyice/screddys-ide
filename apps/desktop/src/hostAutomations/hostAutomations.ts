@@ -36,8 +36,39 @@ const secretFlagInText = new RegExp(
   `(^|\\s)(--?[\\w-]*${SECRET}[\\w-]*)(=|\\s+)${quotedValue}`,
   "gi",
 );
-// A secret in a URL query, as in ?token=… or &api_key=…; the rest of the URL stays.
-const secretQueryParam = new RegExp(`([?&][\\w.-]*${SECRET}[\\w.-]*=)[^&#\\s"']*`, "gi");
+const secretName = new RegExp(SECRET, "i");
+// A URL query parameter's name, as in ?token= or &api_key=, and the value that follows it.
+const QUERY_NAME = /[?&]([^=&#?\s"']+)=/g;
+const QUERY_VALUE = /[^&#\s"']*/y;
+
+function decodedName(name: string): string {
+  try {
+    return decodeURIComponent(name.replace(/\+/g, " "));
+  } catch {
+    return name;
+  }
+}
+
+/**
+ * Hides a query value whose name, once URL-decoded (so %74oken is token), looks like a secret.
+ * Other values are scanned too, so a URL nested in one (?next=…?token=…) is still covered.
+ */
+function hideSecretQueryValues(text: string): string {
+  const names = new RegExp(QUERY_NAME);
+  const value = new RegExp(QUERY_VALUE);
+  let shown = "";
+  let copied = 0;
+  for (let match = names.exec(text); match; match = names.exec(text)) {
+    if (!secretName.test(decodedName(match[1]!))) continue;
+    const valueStart = match.index + match[0].length;
+    value.lastIndex = valueStart;
+    const valueEnd = valueStart + (value.exec(text)?.[0].length ?? 0);
+    shown += `${text.slice(copied, valueStart)}[hidden]`;
+    copied = valueEnd;
+    names.lastIndex = valueEnd;
+  }
+  return shown + text.slice(copied);
+}
 // The name may start with the secret word itself, as in TOKEN=…
 const secretAssignmentInText = new RegExp(
   `(^|\\s)((?:[A-Za-z_][\\w-]*)?${SECRET}[\\w-]*=)${quotedValue}`,
@@ -59,7 +90,7 @@ export function commandLine(args: readonly string[]): string {
       return "[hidden]";
     }
     if (secretFlag.test(arg)) hideNext = true;
-    return arg.replace(secretAssignment, "$1[hidden]").replace(secretQueryParam, "$1[hidden]");
+    return hideSecretQueryValues(arg.replace(secretAssignment, "$1[hidden]"));
   });
   return cap(shown.join(" "));
 }
@@ -67,10 +98,11 @@ export function commandLine(args: readonly string[]): string {
 /** The same for a whole shell command line, as cron stores it; quoted values stay whole. */
 function shellCommand(command: string): string {
   return cap(
-    command
-      .replace(secretFlagInText, "$1$2$3[hidden]")
-      .replace(secretAssignmentInText, "$1$2[hidden]")
-      .replace(secretQueryParam, "$1[hidden]"),
+    hideSecretQueryValues(
+      command
+        .replace(secretFlagInText, "$1$2$3[hidden]")
+        .replace(secretAssignmentInText, "$1$2[hidden]"),
+    ),
   );
 }
 

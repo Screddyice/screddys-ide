@@ -136,6 +136,10 @@ describe("commandLine", () => {
     expect(commandLine(["/usr/bin/curl", "https://example.test/hook?secret=s1&id=2"])).toBe(
       "/usr/bin/curl https://example.test/hook?secret=[hidden]&id=2",
     );
+    // Names are compared after URL decoding: %77 is "w".
+    expect(commandLine(["/usr/bin/curl", "https://example.test/c?pass%77ord=p&id=3"])).toBe(
+      "/usr/bin/curl https://example.test/c?pass%77ord=[hidden]&id=3",
+    );
     const long = commandLine(["/opt/run", "x".repeat(400)]);
     expect(long.length).toBeLessThanOrEqual(240);
     expect(long.endsWith("…")).toBe(true);
@@ -200,6 +204,24 @@ describe("cronAutomations", () => {
     );
     expect(job?.command).toBe(
       "curl -s 'https://example.test/hook?id=7&token=[hidden]&x=1' https://example.test/?api_key=[hidden]",
+    );
+  });
+
+  it("hides a secret nested in another parameter's URL", () => {
+    const [job] = cronAutomations(
+      "0 1 * * * open https://example.test/?next=https://other.test/?token=abc&id=4\n",
+    );
+    expect(job?.command).toBe(
+      "open https://example.test/?next=https://other.test/?token=[hidden]&id=4",
+    );
+  });
+
+  it("compares query parameter names after URL decoding", () => {
+    const [job] = cronAutomations(
+      "*/5 * * * * curl https://example.test/hook?%74oken=abc123&ok=1&%6Bey=k2\n",
+    );
+    expect(job?.command).toBe(
+      "curl https://example.test/hook?%74oken=[hidden]&ok=1&%6Bey=[hidden]",
     );
   });
 
