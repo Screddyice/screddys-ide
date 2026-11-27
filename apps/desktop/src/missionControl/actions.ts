@@ -396,7 +396,13 @@ async function sendReplyOnce(
 
   // Reserve the exact incoming message before dispatch. A lost acknowledgement
   // cannot produce a second send, even after restarting the desktop.
-  await NodeFSP.writeFile(marker, "", { mode: 0o600 });
+  try {
+    await NodeFSP.writeFile(marker, "", { mode: 0o600 });
+  } catch {
+    // Nothing was sent, so free this revision for a retry instead of reporting it unconfirmed.
+    await NodeFSP.rm(receipt, { force: true }).catch(() => {});
+    throw actionError("Screddy couldn't record the reply before sending. Nothing was sent.");
+  }
   if (!(await send().catch(() => false))) {
     // The wait starts once the reply is known to be unconfirmed, not when it was started.
     await NodeFSP.writeFile(marker, "", { mode: 0o600 }).catch(() => {});

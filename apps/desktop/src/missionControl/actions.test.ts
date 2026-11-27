@@ -446,6 +446,12 @@ it("turns away a reply while another to the same item is still being sent", asyn
       body: "Ok",
     });
     await vi.waitFor(() => expect(postSlackReply).toHaveBeenCalledTimes(1));
+    // The post outlasts the 10-minute wait, so no file on disk still blocks a second reply.
+    const replies = NodePath.join(directory, "mission-control-replies");
+    const longAgo = 1_577_836_800; // 2020-01-01 in seconds, well past the 10-minute wait
+    for (const name of await NodeFSP.readdir(replies)) {
+      await NodeFSP.utimes(NodePath.join(replies, name), longAgo, longAgo);
+    }
     setThread([
       { ts: "1794952800.000100", user: "U0OTHER", text: "Launch plan is in the doc" },
       { ts: "1794952860.000200", user: "U0OTHER", text: "<@U0ME> can you sign off?" },
@@ -463,6 +469,40 @@ it("turns away a reply while another to the same item is still being sent", asyn
     finish();
     await expect(first).resolves.toMatchObject({ message: "Reply posted in Slack." });
     expect(postSlackReply).toHaveBeenCalledTimes(1);
+  } finally {
+    await NodeFSP.rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("lets a reply be retried when its record could not be saved and nothing was sent", async () => {
+  const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "screddy-reply-"));
+  try {
+    const replies = NodePath.join(directory, "mission-control-replies");
+    // A folder where the item's marker file goes makes saving the marker fail.
+    const itemKey = NodeCrypto.createHash("sha256")
+      .update(JSON.stringify([emailId]))
+      .digest("hex");
+    const blocker = NodePath.join(replies, itemKey + ".pending");
+    await NodeFSP.mkdir(blocker, { recursive: true });
+    const longAgo = 1_577_836_800; // 2020-01-01 in seconds, so the folder is no recent hold
+    await NodeFSP.utimes(blocker, longAgo, longAgo);
+    const { api, sendGmailReply } = mailboxFixture();
+    const preview = await previewMissionControlReply(api, bindings, emailId);
+    const action = {
+      kind: "reply" as const,
+      itemId: emailId,
+      revision: preview.revision,
+      body: "Review complete.",
+    };
+    await expect(sendMissionControlReply(api, bindings, directory, action)).rejects.toThrow(
+      /Nothing was sent/,
+    );
+    expect(sendGmailReply).not.toHaveBeenCalled();
+    await NodeFSP.rm(blocker, { recursive: true });
+    await expect(sendMissionControlReply(api, bindings, directory, action)).resolves.toMatchObject({
+      message: "Reply sent.",
+    });
+    expect(sendGmailReply).toHaveBeenCalledTimes(1);
   } finally {
     await NodeFSP.rm(directory, { recursive: true, force: true });
   }
