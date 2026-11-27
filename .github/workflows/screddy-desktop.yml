@@ -67,6 +67,8 @@ jobs:
             src/components/MissionControlHandoffButton.browser.test.tsx \
             src/components/MissionControlPriorities.browser.test.tsx \
             src/components/settings/HostAutomationsSection.browser.test.tsx \
+            src/components/usage/UsageAccountBreakdown.browser.test.tsx \
+            src/components/MissionControlTokenBar.browser.test.tsx \
             src/components/onboarding/WelcomePage.import.browser.test.tsx \
             src/components/ChatView.modelPick.browser.test.tsx \
             src/components/ChatView.splitComposer.browser.test.tsx \

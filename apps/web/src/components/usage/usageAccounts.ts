@@ -7,6 +7,8 @@ import type {
 } from "@t3tools/contracts";
 import { bucketTokens } from "@t3tools/shared/usageMerge";
 
+import { PROVIDER_PRESENTATION } from "./usageProviders";
+
 export const USAGE_ACCOUNT_PROVIDERS: ReadonlyArray<{
   readonly value: UsageAccountProvider;
   readonly label: string;
@@ -138,4 +140,51 @@ export function usageAccountStatus(
     return { kind: "missing", folder: usageAccountProviderInfo(account.provider).folder };
   }
   return { kind: "counting", totalTokens: source.totalTokens, sessions: source.sessions };
+}
+
+/** An account's own name, else its home folder ("~/.claude"), else "Cursor account" for a non-folder source. */
+export function usageSourceName(
+  provider: UsageProviderKind,
+  dir: string,
+  account: string | undefined,
+): string {
+  if (account) return account;
+  if (!/^(?:[/~]|[A-Za-z]:[\\/])/.test(dir))
+    return `${PROVIDER_PRESENTATION[provider].label} account`;
+  return dir.replace(/[\\/](?:projects|sessions)$/, "").replace(/^\/(?:Users|home)\/[^/]+/, "~");
+}
+
+export interface UsageAccountRow extends UsageSourceTotals {
+  readonly key: string;
+  readonly name: string;
+  readonly environmentLabel: string;
+}
+
+/** One row per folder the chosen environments read, busiest first; idle unnamed folders are left out. */
+export function usageAccountRows(
+  environments: readonly {
+    readonly environmentId: string;
+    readonly label: string;
+    readonly summary: UsageSummary | null;
+  }[],
+  hiddenProviders: ReadonlySet<UsageProviderKind>,
+): UsageAccountRow[] {
+  return environments
+    .flatMap((environment) =>
+      environment.summary === null
+        ? []
+        : usageSourceTotals(environment.summary)
+            .filter(
+              (source) =>
+                !hiddenProviders.has(source.provider) &&
+                (source.totalTokens > 0 || source.account !== undefined),
+            )
+            .map((source) => ({
+              ...source,
+              key: `${environment.environmentId}\0${source.provider}\0${source.dir}`,
+              name: usageSourceName(source.provider, source.dir, source.account),
+              environmentLabel: environment.label,
+            })),
+    )
+    .toSorted((a, b) => b.totalTokens - a.totalTokens);
 }

@@ -7,6 +7,8 @@ import {
   newUsageAccountId,
   usageAccountProblem,
   usageAccountStatus,
+  usageAccountRows,
+  usageSourceName,
   usageSourceTotals,
 } from "./usageAccounts";
 
@@ -129,5 +131,31 @@ describe("usage accounts", () => {
     expect(usageAccountStatus(account({ enabled: false }), summary)).toEqual({ kind: "off" });
     expect(usageAccountStatus(account({ label: "New" }), summary)).toEqual({ kind: "pending" });
     expect(usageAccountStatus(account(), null)).toEqual({ kind: "pending" });
+  });
+
+  it("names folders and lists the busiest first, leaving out idle unnamed ones", () => {
+    // Built at run time so no real-looking home path sits in the source.
+    const macHome = ["", "Users", "someone", ".claude", "projects"].join("/");
+    expect(usageSourceName("claude", macHome, undefined)).toBe("~/.claude");
+    expect(usageSourceName("codex", "/srv/codex/sessions", undefined)).toBe("/srv/codex");
+    expect(usageSourceName("cursor", "cursor-account:abc123", undefined)).toBe("Cursor account");
+    expect(usageSourceName("claude", "/data/x/projects", "Team Nebula")).toBe("Team Nebula");
+
+    const idle = {
+      ...summary,
+      sources: [...summary.sources, source("/data/idle/projects")],
+    } as UsageSummary;
+    const rows = usageAccountRows(
+      [{ environmentId: "local", label: "This Mac", summary: idle }],
+      new Set(),
+    );
+    expect(rows.map((row) => [row.name, row.totalTokens])).toEqual([
+      ["Team Nebula", 2000],
+      ["/data/.claude", 1000],
+      ["Gone", 0],
+    ]);
+    expect(
+      usageAccountRows([{ environmentId: "local", label: "x", summary }], new Set(["claude"])),
+    ).toEqual([]);
   });
 });
