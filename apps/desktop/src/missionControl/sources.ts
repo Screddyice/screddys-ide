@@ -84,13 +84,12 @@ const completeIssueMutation = `mutation ScreddyCompleteIssue($id: String!, $stat
 
 const proxyOrigins = { gmail: "https://gmail.googleapis.com", slack: "https://slack.com" };
 
+function googleTasksUrl(list: string) {
+  return "https://tasks.googleapis.com/tasks/v1/lists/" + encodeURIComponent(list) + "/tasks";
+}
+
 function googleTaskUrl(list: string, task: string) {
-  return (
-    "https://tasks.googleapis.com/tasks/v1/lists/" +
-    encodeURIComponent(list) +
-    "/tasks/" +
-    encodeURIComponent(task)
-  );
+  return googleTasksUrl(list) + "/" + encodeURIComponent(task);
 }
 
 export function obj(input: unknown): Obj {
@@ -317,6 +316,12 @@ export function connector(home: string) {
         { status: "completed" },
         "PATCH",
       );
+    },
+    insertGoogleTask(account: string, list: string, body: Obj) {
+      return post("googletasks", account, googleTasksUrl(list), body);
+    },
+    updateGoogleTask(account: string, list: string, task: string, body: Obj) {
+      return post("googletasks", account, googleTaskUrl(list, task), body, "PATCH");
     },
     sendGmailReply(account: string, threadId: string, raw: string) {
       return post("gmail", account, proxyOrigins.gmail + "/gmail/v1/users/me/messages/send", {
@@ -628,6 +633,7 @@ export async function readTasks(api: Connector, account: string): Promise<Items>
           activity: str(task.updated),
           due: dueDate(task.due),
           urgency: "normal",
+          ...(str(task.notes) && { notes: str(task.notes).slice(0, 8192) }),
         });
       }
       next = str(result.nextPageToken);

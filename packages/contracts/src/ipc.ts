@@ -1090,6 +1090,7 @@ export const MissionControlItemSchema = Schema.Struct({
   taskContext: Schema.optional(MissionControlTaskContextSchema),
   priorityReason: Schema.optional(Schema.String),
   canReply: Schema.optional(Schema.Boolean),
+  notes: Schema.optional(Schema.String),
 });
 export type MissionControlItem = typeof MissionControlItemSchema.Type;
 export const MissionControlActionItemIdSchema = Schema.String.check(Schema.isMaxLength(100));
@@ -1108,6 +1109,9 @@ export const MissionControlReplyPreviewSchema = Schema.Union([
     revision: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
   }),
 ]);
+const MissionControlTaskTitleSchema = Schema.String.check(Schema.isMaxLength(1024));
+const MissionControlTaskNotesSchema = Schema.String.check(Schema.isMaxLength(8192));
+const MissionControlTaskDueSchema = Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/));
 export const MissionControlActionRequestSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("reply"),
@@ -1123,10 +1127,27 @@ export const MissionControlActionRequestSchema = Schema.Union([
     kind: Schema.Literal("complete-task"),
     itemId: MissionControlActionItemIdSchema,
   }),
+  Schema.Struct({
+    kind: Schema.Literal("create-task"),
+    title: MissionControlTaskTitleSchema,
+    notes: Schema.optional(MissionControlTaskNotesSchema),
+    due: Schema.optional(MissionControlTaskDueSchema),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("update-task"),
+    itemId: MissionControlActionItemIdSchema,
+    title: Schema.optional(MissionControlTaskTitleSchema),
+    notes: Schema.optional(MissionControlTaskNotesSchema),
+    due: Schema.optional(Schema.NullOr(MissionControlTaskDueSchema)),
+  }),
 ]);
 export const MissionControlActionResultSchema = Schema.Union([
   MissionControlActionErrorSchema,
-  Schema.Struct({ ok: Schema.Literal(true), message: Schema.String }),
+  Schema.Struct({
+    ok: Schema.Literal(true),
+    message: Schema.String,
+    itemId: Schema.optional(MissionControlActionItemIdSchema),
+  }),
 ]);
 export type MissionControlReplyPreview = typeof MissionControlReplyPreviewSchema.Type;
 export type MissionControlActionRequest = typeof MissionControlActionRequestSchema.Type;

@@ -7,8 +7,10 @@ import { expect, it, vi } from "vite-plus/test";
 import {
   completeMissionControlIssue,
   completeMissionControlTask,
+  createMissionControlTask,
   previewMissionControlReply,
   sendMissionControlReply,
+  updateMissionControlTask,
 } from "./actions.ts";
 import type { Bindings, Connector } from "./sources.ts";
 
@@ -213,4 +215,118 @@ it("completes an open Google Task once and confirms the saved status", async () 
   await expect(completeMissionControlTask(api, withTasks, "tasks:../x:" + task)).rejects.toThrow(
     /configured/,
   );
+});
+
+it("adds a Google Task to the default list and returns its Mission Control id", async () => {
+  const list = "MTgxNjU4MDY0MTQ4NzUxNTk5NzM6MDow";
+  const task = "bmV3LXRhc2stMQ";
+  const insertGoogleTask = vi.fn<Connector["insertGoogleTask"]>(async (_account, _list, body) => ({
+    ...body,
+    id: task,
+    status: "needsAction",
+    selfLink: `https://www.googleapis.com/tasks/v1/lists/${list}/tasks/${task}`,
+  }));
+  const api = { insertGoogleTask } as unknown as Connector;
+  const withTasks = { ...bindings, tasks: "tasks-account" };
+
+  await expect(
+    createMissionControlTask(api, withTasks, {
+      title: "  Renew passport ",
+      notes: "Bring the old one",
+      due: "2026-12-01",
+    }),
+  ).resolves.toEqual({
+    ok: true,
+    message: "Added to Google Tasks.",
+    itemId: `tasks:${list}:${task}`,
+  });
+  expect(insertGoogleTask).toHaveBeenCalledExactlyOnceWith("tasks-account", "@default", {
+    title: "Renew passport",
+    notes: "Bring the old one",
+    due: "2026-12-01T00:00:00.000Z",
+  });
+
+  await createMissionControlTask(api, withTasks, { title: "Call the bank", notes: "" });
+  expect(insertGoogleTask).toHaveBeenLastCalledWith("tasks-account", "@default", {
+    title: "Call the bank",
+  });
+
+  await expect(createMissionControlTask(api, withTasks, { title: "   " })).rejects.toThrow(/title/);
+  await expect(
+    createMissionControlTask(api, withTasks, { title: "Pay rent", due: "2026-02-31" }),
+  ).rejects.toThrow(/due date/);
+  await expect(createMissionControlTask(api, bindings, { title: "Pay rent" })).rejects.toThrow(
+    /configured/,
+  );
+  expect(insertGoogleTask).toHaveBeenCalledTimes(2);
+
+  // Without a saved task in the reply, adding it again could make a duplicate.
+  insertGoogleTask.mockResolvedValueOnce({ error: "timeout" });
+  await expect(createMissionControlTask(api, withTasks, { title: "Pay rent" })).rejects.toThrow(
+    /before adding it again/,
+  );
+});
+
+it("edits only the fields asked for on the exact Google Task and confirms them", async () => {
+  const list = "MTgxNjU4MDY0MTQ4NzUxNTk5NzM6MDow";
+  const task = "dGFzay1pZC0xMjM0NQ";
+  const saved = {
+    id: task,
+    title: "Renew passport",
+    notes: "Bring the old one",
+    due: "2026-12-01T00:00:00.000Z",
+    status: "needsAction",
+  };
+  const googleTask = vi.fn<Connector["googleTask"]>(async () => saved);
+  const updateGoogleTask = vi.fn<Connector["updateGoogleTask"]>(
+    async (_account, _list, _task, body) => ({ ...saved, ...body }),
+  );
+  const api = { googleTask, updateGoogleTask } as unknown as Connector;
+  const withTasks = { ...bindings, tasks: "tasks-account" };
+  const itemId = `tasks:${list}:${task}`;
+
+  await expect(
+    updateMissionControlTask(api, withTasks, itemId, { title: "Renew passport by Friday" }),
+  ).resolves.toEqual({ ok: true, message: "Updated in Google Tasks.", itemId });
+  expect(updateGoogleTask).toHaveBeenCalledExactlyOnceWith("tasks-account", list, task, {
+    title: "Renew passport by Friday",
+  });
+
+  updateGoogleTask.mockImplementationOnce(async (_account, _list, _task, body) => {
+    const { due: _cleared, ...rest } = saved;
+    return { ...rest, ...body, due: undefined };
+  });
+  await updateMissionControlTask(api, withTasks, itemId, { due: null, notes: "" });
+  expect(updateGoogleTask).toHaveBeenLastCalledWith("tasks-account", list, task, {
+    notes: "",
+    due: null,
+  });
+
+  await expect(updateMissionControlTask(api, withTasks, itemId, {})).rejects.toThrow(
+    /Nothing to change/,
+  );
+  await expect(
+    updateMissionControlTask(api, withTasks, itemId, { due: "next friday" }),
+  ).rejects.toThrow(/due date/);
+  await expect(
+    updateMissionControlTask(api, withTasks, "tasks:../x:" + task, { title: "x" }),
+  ).rejects.toThrow(/configured/);
+  expect(updateGoogleTask).toHaveBeenCalledTimes(2);
+
+  // A lost reply still counts when Google Tasks already holds the new values.
+  updateGoogleTask.mockResolvedValueOnce({ error: "timeout" });
+  googleTask.mockResolvedValueOnce(saved).mockResolvedValueOnce({ ...saved, title: "Renamed" });
+  await expect(
+    updateMissionControlTask(api, withTasks, itemId, { title: "Renamed" }),
+  ).resolves.toMatchObject({ ok: true });
+
+  updateGoogleTask.mockResolvedValueOnce({ ...saved, title: "Something else" });
+  await expect(
+    updateMissionControlTask(api, withTasks, itemId, { title: "Renamed" }),
+  ).rejects.toThrow(/did not confirm/);
+
+  googleTask.mockResolvedValueOnce({ ...saved, deleted: true });
+  await expect(
+    updateMissionControlTask(api, withTasks, itemId, { title: "Renamed" }),
+  ).rejects.toThrow(/no longer/);
 });

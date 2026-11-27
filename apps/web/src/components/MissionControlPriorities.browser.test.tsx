@@ -334,3 +334,82 @@ it("loads a selected filter while All is pending and ignores the old response", 
     else Reflect.deleteProperty(window, "desktopBridge");
   }
 });
+
+it("adds a Google Task and sends only the edited fields for an existing one", async () => {
+  const task: MissionControlItem = {
+    id: "tasks:list-1:task-1",
+    source: "tasks",
+    account: "Personal",
+    title: "Renew passport",
+    detail: "My Tasks",
+    url: null,
+    activity: "2026-11-18T00:00:00Z",
+    due: "2026-12-01",
+    urgency: "normal",
+    notes: "Bring the old one",
+  };
+  const getMissionControl = vi.fn<DesktopBridge["getMissionControl"]>().mockResolvedValue({
+    configured: true,
+    fetchedAt: null,
+    mailboxes: [],
+    items: [task],
+    sources: [{ source: "tasks", account: "Personal", state: "ready", detail: "" }],
+    context: null,
+    nextCursor: null,
+  });
+  const runMissionControlAction = vi
+    .fn<NonNullable<DesktopBridge["runMissionControlAction"]>>()
+    .mockResolvedValueOnce({ ok: false, error: "Google Tasks is not configured." })
+    .mockResolvedValue({ ok: true, message: "Saved." });
+  const previousBridge = window.desktopBridge;
+  window.desktopBridge = {
+    ...previousBridge,
+    getMissionControl,
+    runMissionControlAction,
+    getLocalEnvironmentEnabled: () => false,
+    getLocalEnvironmentBootstraps: () => [],
+  } as DesktopBridge;
+  try {
+    await using screen = await render(<MissionControlPriorities />);
+    await screen.getByRole("button", { name: "Add task" }).click();
+    const add = page.getByRole("dialog", { name: "Add a task" });
+    const save = add.getByRole("button", { name: "Add task" });
+    await expect.element(save).toBeDisabled();
+    await add.getByRole("textbox", { name: "Title" }).fill("Book flights");
+    await add.getByLabelText("Due date").fill("2026-12-05");
+    await save.click();
+    await expect
+      .element(add.getByRole("alert"))
+      .toHaveTextContent("Google Tasks is not configured.");
+    await save.click();
+    await expect.element(add).not.toBeInTheDocument();
+    expect(runMissionControlAction).toHaveBeenLastCalledWith({
+      kind: "create-task",
+      title: "Book flights",
+      due: "2026-12-05",
+    });
+
+    await screen.getByRole("button", { name: "Edit" }).click();
+    const edit = page.getByRole("dialog", { name: "Edit task" });
+    await expect
+      .element(edit.getByRole("textbox", { name: "Notes" }))
+      .toHaveValue("Bring the old one");
+    const saveChanges = edit.getByRole("button", { name: "Save changes" });
+    await expect.element(saveChanges).toBeDisabled();
+    await edit.getByRole("textbox", { name: "Title" }).fill("Renew passport by Friday");
+    await edit.getByLabelText("Due date").fill("");
+    await saveChanges.click();
+    await expect.element(edit).not.toBeInTheDocument();
+    expect(runMissionControlAction).toHaveBeenLastCalledWith({
+      kind: "update-task",
+      itemId: task.id,
+      title: "Renew passport by Friday",
+      due: null,
+    });
+    expect(runMissionControlAction).toHaveBeenCalledTimes(3);
+    await expect.element(screen.getByText("Renew passport")).toBeVisible();
+  } finally {
+    if (previousBridge) window.desktopBridge = previousBridge;
+    else Reflect.deleteProperty(window, "desktopBridge");
+  }
+});
