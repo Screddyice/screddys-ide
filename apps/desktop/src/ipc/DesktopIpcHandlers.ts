@@ -15,6 +15,7 @@ import { receiveProviderAuthCallback, cancelProviderAuthCallback } from "./metho
 import { openBlurtVoice, turnBlurtVoice, closeBlurtVoice } from "./methods/blurtVoice.ts";
 import * as DesktopIpc from "./DesktopIpc.ts";
 import { installTokenUsageMenu } from "./methods/tokenUsage.ts";
+import { installMissionControlSocket } from "./methods/missionControlSocket.ts";
 import { installNotificationBadge } from "./methods/notificationBadge.ts";
 import { getClientSettings, setClientSettings } from "./methods/clientSettings.ts";
 import { getConnectionCatalog, setConnectionCatalog } from "./methods/connectionCatalog.ts";
@@ -101,6 +102,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   const ipc = yield* DesktopIpc.DesktopIpc;
   yield* installNotificationBadge();
   yield* installTokenUsageMenu();
+  yield* installMissionControlSocket();
   yield* PreviewIpc.installPreviewEventForwarding();
 
   yield* ipc.handle(AppActivationIpc.setReady);

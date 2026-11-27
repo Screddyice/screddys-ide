@@ -1150,6 +1150,16 @@ export const MissionControlActionResultSchema = Schema.Union([
   }),
 ]);
 export type MissionControlReplyPreview = typeof MissionControlReplyPreviewSchema.Type;
+/** What the local server may ask the desktop app's Mission Control socket to do. */
+export const MISSION_CONTROL_SOCKET_OPERATIONS = ["priorities", "reply-preview", "action"] as const;
+export type MissionControlSocketOperation = (typeof MISSION_CONTROL_SOCKET_OPERATIONS)[number];
+export const MISSION_CONTROL_SOCKET_MAX_REQUEST_BYTES = 64 * 1024;
+/**
+ * The desktop app serves Mission Control on this Unix socket, under the base directory it also
+ * passes to the server as `--base-dir`, so both sides find the same path.
+ */
+export const missionControlSocketPath = (baseDir: string) =>
+  `${baseDir.replace(/\/+$/, "")}/sockets/mission-control.sock`;
 export type MissionControlActionRequest = typeof MissionControlActionRequestSchema.Type;
 export type MissionControlActionResult = typeof MissionControlActionResultSchema.Type;
 export const MissionControlHandoffRequestSchema = Schema.Struct({
