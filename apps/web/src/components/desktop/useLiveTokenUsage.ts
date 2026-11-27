@@ -1,16 +1,16 @@
 import type { UsageProviderKind } from "@t3tools/contracts";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent } from "react";
 
 import { useUsage } from "../../state/usage";
-import { buildDesktopUsageSnapshot, currentUsageRange } from "./desktopUsageSnapshot";
+import { buildDesktopUsageSnapshot } from "./desktopUsageSnapshot";
 import { useTokenThroughput } from "./useTokenThroughput";
+import { useUsageRange } from "./useUsageRange";
 
 const REFRESH_MS = 60_000;
 
 /** The menu bar's usage report and throughput, re-read every minute while the caller is mounted. */
 export function useLiveTokenUsage(plans?: ReadonlyMap<UsageProviderKind, string>) {
-  // Held in state: useUsage re-renders whenever its window object changes identity.
-  const [range, setRange] = useState(currentUsageRange);
+  const { range, rollOver } = useUsageRange();
   const { environments, refresh } = useUsage(range.month);
   const snapshot = buildDesktopUsageSnapshot(
     environments,
@@ -20,15 +20,9 @@ export function useLiveTokenUsage(plans?: ReadonlyMap<UsageProviderKind, string>
   );
   const rate = useTokenThroughput(environments, snapshot?.today.totalTokens ?? null);
   const requestRefresh = useEffectEvent(() => {
+    // Midnight or a time zone change moves "today", even while nothing can be read.
+    const next = rollOver();
     if (!environments.some((host) => host.canReadDiagnostics && host.isConnected)) return;
-    const next = currentUsageRange();
-    // Midnight or a time zone change moves "today", so the reading follows it on the next read.
-    if (
-      next.month.untilDay !== range.month.untilDay ||
-      next.month.timeZone !== range.month.timeZone
-    ) {
-      setRange(next);
-    }
     void refresh(next.month).catch(() => {});
   });
 
