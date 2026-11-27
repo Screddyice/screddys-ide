@@ -142,7 +142,7 @@ const bootstrap = Effect.gen(function* () {
   );
 
   yield* snapShot.initialize;
-  yield* DesktopStaleServer.restartStaleLocalServerAtStartup();
+  yield* DesktopStaleServer.takeOverLocalServerForThisApp();
 
   if (!settings.localEnvironmentEnabled) {
     yield* logBootstrapInfo("bootstrap skipping local environment (disabled in settings)");

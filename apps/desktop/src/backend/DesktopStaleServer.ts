@@ -20,21 +20,28 @@ export interface StaleServerProbe {
   readonly isAlive: (pid: number) => Effect.Effect<boolean>;
   readonly commandOf: (pid: number) => Effect.Effect<string | undefined>;
   readonly terminate: (pid: number) => Effect.Effect<void>;
+  /** The wait between liveness checks while a stopped server exits. */
+  readonly pause: Effect.Effect<void>;
 }
 
-export type StaleServerResult =
+export type TakeOverResult =
   | { readonly _tag: "Kept" }
-  | { readonly _tag: "Restarted"; readonly pid: number; readonly serverVersion: string };
+  | { readonly _tag: "Stopped"; readonly pid: number; readonly serverVersion: string }
+  | { readonly _tag: "Foreign"; readonly pid: number }
+  | { readonly _tag: "Stuck"; readonly pid: number };
 
-const kept: StaleServerResult = { _tag: "Kept" };
+const kept: TakeOverResult = { _tag: "Kept" };
+
+/** About ten seconds at the real pause: a server gets that long to shut down and free the lock. */
+const EXIT_CHECKS = 100;
 
 /**
- * A server that outlives the app (the launchd background service) keeps running the
- * bundle it started from after an app update. Stopping it lets its supervisor start
- * the installed version; only the server this install's entry point launched is touched.
+ * A server that outlives the app (a launchd background service) owns the data folder's lock, and
+ * the app's own server cannot start beside it. Opening the app takes over: it stops a live server
+ * that this install's entry point started, whatever version it runs, and waits for it to exit. The
+ * service starts it again once the app quits. A server from any other program is never touched.
  */
-export const restartStaleLocalServer = Effect.fn("desktop.staleServer.restart")(function* (input: {
-  readonly appVersion: string;
+export const takeOverLocalServer = Effect.fn("desktop.staleServer.takeOver")(function* (input: {
   readonly backendEntryPath: string;
   readonly probe: StaleServerProbe;
 }) {
@@ -43,13 +50,54 @@ export const restartStaleLocalServer = Effect.fn("desktop.staleServer.restart")(
   const state = decodeRuntimeState(contents);
   if (Option.isNone(state)) return kept;
   const { pid, serverVersion } = state.value;
-  if (serverVersion === input.appVersion) return kept;
   if (!(yield* input.probe.isAlive(pid))) return kept;
   const command = yield* input.probe.commandOf(pid);
-  if (command === undefined || !command.includes(input.backendEntryPath)) return kept;
+  if (command === undefined || !command.includes(input.backendEntryPath)) {
+    return { _tag: "Foreign", pid } satisfies TakeOverResult;
+  }
   yield* input.probe.terminate(pid);
-  return { _tag: "Restarted", pid, serverVersion } satisfies StaleServerResult;
+  for (let check = 0; check < EXIT_CHECKS; check++) {
+    if (!(yield* input.probe.isAlive(pid))) {
+      return { _tag: "Stopped", pid, serverVersion } satisfies TakeOverResult;
+    }
+    yield* input.probe.pause;
+  }
+  return { _tag: "Stuck", pid } satisfies TakeOverResult;
 });
+
+/**
+ * What the app does when its own server finds the data folder taken. launchd restarts a stopped
+ * background server at once, so it can win the race against the app's server; stopping it again and
+ * restarting wins once launchd's throttle holds the next respawn back. Another program's server, one
+ * that will not exit, or running out of attempts ends in `giveUp`.
+ */
+export function ownedHomeRecovery(input: {
+  readonly takeOver: Effect.Effect<TakeOverResult>;
+  readonly restart: Effect.Effect<void>;
+  readonly giveUp: Effect.Effect<void>;
+  /** Lets a new owner that has not recorded itself yet do so before the next attempt. */
+  readonly pause: Effect.Effect<void>;
+  readonly maxAttempts: number;
+}) {
+  let attempts = 0;
+  return Effect.suspend(() => {
+    if (attempts >= input.maxAttempts) return input.giveUp;
+    attempts += 1;
+    return input.takeOver.pipe(
+      Effect.flatMap((result) => {
+        switch (result._tag) {
+          case "Stopped":
+            return input.restart;
+          case "Kept":
+            return input.pause.pipe(Effect.andThen(input.restart));
+          case "Foreign":
+          case "Stuck":
+            return input.giveUp;
+        }
+      }),
+    );
+  });
+}
 
 const isAlive = (pid: number) =>
   Effect.sync(() => {
@@ -80,8 +128,8 @@ const terminate = (pid: number) =>
     }
   });
 
-/** Runs once at startup for packaged builds on platforms with `ps`. */
-export const restartStaleLocalServerAtStartup = Effect.fn("desktop.staleServer.atStartup")(
+/** Takes over from a background server for packaged builds on platforms with `ps`. */
+export const takeOverLocalServerForThisApp = Effect.fn("desktop.staleServer.forThisApp")(
   function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     if (!environment.isPackaged || environment.isDevelopment || environment.platform === "win32") {
@@ -89,8 +137,7 @@ export const restartStaleLocalServerAtStartup = Effect.fn("desktop.staleServer.a
     }
     const fileSystem = yield* FileSystem.FileSystem;
     const runtimeStatePath = environment.path.join(environment.stateDir, "server-runtime.json");
-    const result = yield* restartStaleLocalServer({
-      appVersion: environment.appVersion,
+    const result = yield* takeOverLocalServer({
       backendEntryPath: environment.backendEntryPath,
       probe: {
         readRuntimeState: fileSystem
@@ -99,18 +146,21 @@ export const restartStaleLocalServerAtStartup = Effect.fn("desktop.staleServer.a
         isAlive,
         commandOf,
         terminate,
+        pause: Effect.sleep("100 millis"),
       },
     });
-    if (result._tag === "Restarted") {
-      yield* logInfo("stopped a local server running another app version", {
+    if (result._tag === "Stopped") {
+      yield* logInfo("stopped a local server so this app can own its data folder", {
         pid: result.pid,
         serverVersion: result.serverVersion,
         appVersion: environment.appVersion,
       });
+    } else if (result._tag === "Stuck") {
+      yield* logWarning("a local server did not exit after being stopped", { pid: result.pid });
     }
     return result;
   },
   Effect.catchCause((cause) =>
-    logWarning("could not check for a stale local server", { cause }).pipe(Effect.as(kept)),
+    logWarning("could not check for a local server to take over", { cause }).pipe(Effect.as(kept)),
   ),
 );

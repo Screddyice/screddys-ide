@@ -181,3 +181,23 @@ it("stops allowing an item once a later answer marks it restricted", async () =>
     error: "Read Mission Control again, then act on an item it shows.",
   });
 });
+
+it("stops allowing an item 15 minutes after Mission Control last showed it", async () => {
+  let clock = 0;
+  const dispatch = guardShownItems(
+    async (op) =>
+      op === "priorities" ? { items: [{ id: "tasks:l:1" }] } : { ok: true, message: "Done" },
+    () => clock,
+  );
+  const act = () => dispatch("action", { kind: "complete-task", itemId: "tasks:l:1" });
+  await dispatch("priorities", { view: "priorities", refresh: false });
+  clock = 14 * 60_000;
+  expect(await act()).toMatchObject({ ok: true });
+  clock = 16 * 60_000;
+  expect(await act()).toEqual({
+    ok: false,
+    error: "Read Mission Control again, then act on an item it shows.",
+  });
+  await dispatch("priorities", { view: "priorities", refresh: false });
+  expect(await act()).toMatchObject({ ok: true });
+});
