@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useUpdateEnvironmentSettings } from "../../hooks/useSettings";
 import { ensureLocalApi } from "../../localApi";
 import { useUsage } from "../../state/usage";
-import { currentUsageRange } from "../desktop/desktopUsageSnapshot";
+import { useUsageRange } from "../desktop/useUsageRange";
 import {
   usageAccountProviderInfo,
   usageAccountStatus,
@@ -47,7 +47,7 @@ export function UsageAccountSettings({
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
   const [adding, setAdding] = useState(false);
   // The menu bar's 30-day window, so both read one usage fetch.
-  const [range] = useState(currentUsageRange);
+  const { range } = useUsageRange();
   const usage = useUsage(range.month);
   const summary =
     usage.environments.find((environment) => environment.environmentId === environmentId)

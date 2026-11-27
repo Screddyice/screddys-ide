@@ -1,15 +1,12 @@
 import type { DesktopBridge } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 
 import { useEnvironmentProviders } from "../../state/environments";
 import { useUsage } from "../../state/usage";
-import {
-  buildDesktopUsageSnapshot,
-  usagePlans,
-  currentUsageRange as currentRange,
-} from "./desktopUsageSnapshot";
+import { buildDesktopUsageSnapshot, usagePlans } from "./desktopUsageSnapshot";
 import { useTokenThroughput } from "./useTokenThroughput";
+import { useUsageRange } from "./useUsageRange";
 
 // One read a minute keeps the menu bar throughput current.
 const REFRESH_MS = 60_000;
@@ -36,7 +33,7 @@ function TokenUsagePublisher({
   readonly subscribe: NonNullable<DesktopBridge["onTokenUsageMenuAction"]>;
   readonly publish: NonNullable<DesktopBridge["setTokenUsageMenu"]>;
 }) {
-  const [range, setRange] = useState(currentRange);
+  const { range, rollOver } = useUsageRange();
   const { environments, isPending, refresh } = useUsage(range.month);
   const plans = usagePlans(useEnvironmentProviders());
   const snapshot = buildDesktopUsageSnapshot(
@@ -50,13 +47,11 @@ function TokenUsagePublisher({
   const busy = useRef(false);
   const navigate = useNavigate();
   const requestRefresh = useEffectEvent(() => {
+    // Midnight or a time zone change moves "today", even while nothing can be read.
+    const next = rollOver();
     if (busy.current || !environments.some((host) => host.canReadDiagnostics && host.isConnected)) {
       return;
     }
-    const next = currentRange();
-    const windowChanged =
-      next.month.untilDay !== range.month.untilDay || next.month.timeZone !== range.month.timeZone;
-    if (windowChanged) setRange(next);
     busy.current = true;
     void refresh(next.month)
       .finally(() => {

@@ -21,7 +21,7 @@ import { cn } from "../lib/utils";
 import { formatDayAwareTimestamp } from "../timestampFormat";
 import { useEnvironmentProviders, type EnvironmentPresentation } from "../state/environments";
 import { mergeAnsweredUsage, useUsage } from "../state/usage";
-import { currentUsageRange } from "./desktop/desktopUsageSnapshot";
+import { useUsageRange } from "./desktop/useUsageRange";
 import { summarizeRunningAgents } from "./MissionControl.logic";
 import { Button } from "./ui/button";
 
@@ -158,8 +158,8 @@ export function MissionControlAgentActivity({
   const [feed, setFeed] = useState<{ revision: number; data?: AgentActivity; error: boolean }>();
   const providerSnapshots = useEnvironmentProviders();
   const timeFormat = useClientSettings((settings) => settings.timestampFormat);
-  // Held in state: useUsage re-renders whenever its window object changes identity. Same window key as the menu bar.
-  const [usageRange] = useState(currentUsageRange);
+  // Same window key as the menu bar, and it moves to the new date at midnight.
+  const { range: usageRange } = useUsageRange();
   const usage = useUsage(usageRange.month);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Starts and cleans up a read from the desktop account feeds.
