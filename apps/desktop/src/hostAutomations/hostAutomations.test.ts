@@ -287,6 +287,11 @@ describe("cronAutomations", () => {
     const [open] = cronAutomations('0 8 * * * TOKEN="secret value /opt/run\n');
     expect(open?.command).toBe("TOKEN=[hidden]");
     expect(open?.name).toBe("command");
+    // A quoted program path is valid shell; its quotes come off and it keeps its name.
+    const quoted = cronAutomations(
+      "0 8 * * * MODE=prod \"/opt/tasks/backup\"\n0 9 * * * '/opt/my tasks/sync' --all\n",
+    );
+    expect(quoted.map((job) => job.name)).toEqual(["backup", "sync"]);
   });
 });
 
