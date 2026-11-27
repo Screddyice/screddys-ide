@@ -5,7 +5,11 @@ import * as NodePath from "node:path";
 import { missionControlSocketPath } from "@t3tools/contracts";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 
-import { serveMissionControlSocket } from "./missionControlSocket.ts";
+import {
+  guardShownItems,
+  serveMissionControlSocket,
+  socketStagingPath,
+} from "./missionControlSocket.ts";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -103,4 +107,58 @@ it("replaces a stale socket file but leaves a live one to the app that owns it",
 
   await first.close();
   await expect(NodeFSP.stat(path)).rejects.toThrow();
+});
+
+it("binds beside the final socket path, never at a longer one", () => {
+  // The packaged app's Node refuses a Unix socket path over 104 bytes; the test runner's may not.
+  for (const base of ["/Users/someone/.screddys-ide", "/tmp/" + "d".repeat(70)]) {
+    const path = missionControlSocketPath(base);
+    const staging = socketStagingPath(path);
+    expect(NodePath.dirname(staging)).toBe(NodePath.dirname(path));
+    expect(Buffer.byteLength(staging)).toBeLessThanOrEqual(Buffer.byteLength(path));
+  }
+});
+
+it("lets apps act only on unrestricted items Mission Control showed them, or tasks they added", async () => {
+  const run = vi.fn(async (op: string, payload: unknown) =>
+    op === "priorities"
+      ? {
+          items: [
+            { id: "tasks:l:open" },
+            { id: "tasks:l:secret", taskContext: { restricted: true } },
+            { id: "gmail:Personal:abcdef01" },
+          ],
+        }
+      : (payload as { kind?: string })?.kind === "create-task"
+        ? { ok: true, message: "Added", itemId: "tasks:l:new" }
+        : { ok: true, message: "Done" },
+  );
+  const dispatch = guardShownItems(run);
+  const refused = { ok: false, error: "Read Mission Control again, then act on an item it shows." };
+
+  expect(await dispatch("action", { kind: "complete-task", itemId: "tasks:l:open" })).toEqual(
+    refused,
+  );
+  expect(await dispatch("reply-preview", "gmail:Personal:abcdef01")).toEqual(refused);
+  await dispatch("priorities", { view: "priorities", refresh: false });
+
+  expect(await dispatch("action", { kind: "complete-task", itemId: "tasks:l:open" })).toMatchObject(
+    {
+      ok: true,
+    },
+  );
+  expect(await dispatch("reply-preview", "gmail:Personal:abcdef01")).toMatchObject({ ok: true });
+  expect(
+    await dispatch("action", { kind: "update-task", itemId: "tasks:l:secret", title: "x" }),
+  ).toEqual(refused);
+  expect(await dispatch("action", { kind: "update-task" })).toEqual(refused);
+
+  await dispatch("action", { kind: "create-task", title: "Book flights" });
+  expect(
+    await dispatch("action", { kind: "update-task", itemId: "tasks:l:new", title: "Book trains" }),
+  ).toMatchObject({ ok: true });
+  expect(run).not.toHaveBeenCalledWith(
+    "action",
+    expect.objectContaining({ itemId: "tasks:l:secret" }),
+  );
 });
