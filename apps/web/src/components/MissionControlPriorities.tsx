@@ -17,6 +17,7 @@ import {
   useMissionControlHandoffs,
 } from "./MissionControlHandoffButton.tsx";
 import { MissionControlItemAction } from "./MissionControlItemAction.tsx";
+import { MissionControlTaskButton } from "./MissionControlTaskDialog.tsx";
 import { Button } from "./ui/button";
 import { toastManager } from "./ui/toast";
 
@@ -47,11 +48,13 @@ function ItemRow({
   handoff,
   resolved,
   onDone,
+  onChanged,
 }: {
   item: MissionControlItem;
   handoff: MissionControlHandoff | undefined;
   resolved: boolean;
   onDone: (result: Extract<MissionControlActionResult, { ok: true }>) => void;
+  onChanged: (result: Extract<MissionControlActionResult, { ok: true }>) => void;
 }) {
   const detail = [
     labels[item.source],
@@ -105,6 +108,7 @@ function ItemRow({
       ) : (
         <>
           <MissionControlItemAction item={item} onDone={onDone} />
+          {item.source === "tasks" && <MissionControlTaskButton item={item} onSaved={onChanged} />}
           <MissionControlHandoffButton key={item.title} item={item} handoff={handoff} />
         </>
       )}
@@ -235,6 +239,14 @@ export function MissionControlPriorities() {
     active.isError ||
     (sources.length > 0 && sources.every((source) => source.state === "unavailable"));
   if (!bridge?.getMissionControl || (snapshot && !snapshot.configured)) return null;
+  const onChanged = (result: Extract<MissionControlActionResult, { ok: true }>) => {
+    toastManager.add({ type: "success", title: result.message });
+    active.refresh();
+  };
+  const canAddTask =
+    !account &&
+    (filter === "all" || filter === "tasks") &&
+    Boolean(snapshot?.sources.some((source) => source.source === "tasks"));
 
   return (
     <section aria-label="Personal priorities" className="space-y-4">
@@ -260,10 +272,13 @@ export function MissionControlPriorities() {
             </p>
           )}
         </div>
-        <Button variant="outline" size="sm" disabled={active.isFetching} onClick={active.refresh}>
-          <RefreshCwIcon className={cn("size-4", active.isFetching && "animate-spin")} />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          {canAddTask && <MissionControlTaskButton onSaved={onChanged} />}
+          <Button variant="outline" size="sm" disabled={active.isFetching} onClick={active.refresh}>
+            <RefreshCwIcon className={cn("size-4", active.isFetching && "animate-spin")} />
+            Refresh
+          </Button>
+        </div>
       </div>
       <div className="flex flex-wrap gap-2" aria-label="Priority filters">
         {filters.map(([id, name]) => (
@@ -324,6 +339,7 @@ export function MissionControlPriorities() {
                   toastManager.add({ type: "success", title: result.message });
                   active.refresh();
                 }}
+                onChanged={onChanged}
               />
             ))}
           </ul>

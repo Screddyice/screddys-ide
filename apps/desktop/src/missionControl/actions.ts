@@ -308,3 +308,107 @@ export async function completeMissionControlTask(
   }
   return { ok: true as const, message: "Marked complete in Google Tasks." };
 }
+
+export interface MissionControlTaskFields {
+  readonly title?: string | undefined;
+  readonly notes?: string | undefined;
+  readonly due?: string | null | undefined;
+}
+
+const taskSelfLink = /\/lists\/([\w-]{1,64})\/tasks\/([\w-]{1,64})$/;
+
+function validDay(day: string) {
+  const [, year, month, date] = (/^(\d{4})-(\d{2})-(\d{2})$/.exec(day) ?? []).map(Number);
+  if (!year || !month || !date || month > 12) return false;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  return date <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]!;
+}
+
+/** The Google Tasks body for the fields given; a field left out stays as it is. */
+function taskBody(fields: MissionControlTaskFields) {
+  const body: Record<string, string | null> = {};
+  if (fields.title !== undefined) {
+    const title = fields.title.trim();
+    if (!title) throw actionError("Give the task a title.");
+    if (title.length > 1024) throw actionError("Keep the task title under 1,024 characters.");
+    body.title = title;
+  }
+  if (fields.notes !== undefined) {
+    if (fields.notes.length > 8192) throw actionError("Keep the notes under 8,192 characters.");
+    body.notes = fields.notes;
+  }
+  if (fields.due !== undefined) {
+    if (fields.due !== null && !validDay(fields.due)) {
+      throw actionError("Use a real due date written like 2026-12-01.");
+    }
+    body.due = fields.due === null ? null : fields.due + "T00:00:00.000Z";
+  }
+  return body;
+}
+
+/** Whether Google Tasks now holds every value in the body. */
+function holds(task: Record<string, unknown>, body: Record<string, string | null>) {
+  return Object.entries(body).every(([key, value]) =>
+    key === "due"
+      ? (str(task.due).slice(0, 10) || null) === (value?.slice(0, 10) ?? null)
+      : str(task[key]) === value,
+  );
+}
+
+function taskBinding(bindings: Bindings) {
+  if (!bindings.tasks) throw actionError("Google Tasks is not configured for Mission Control.");
+  return bindings.tasks;
+}
+
+export async function createMissionControlTask(
+  api: Connector,
+  bindings: Bindings,
+  fields: MissionControlTaskFields & { readonly title: string; readonly due?: string | undefined },
+) {
+  const account = taskBinding(bindings);
+  const body = taskBody(fields);
+  if (body.notes === "") delete body.notes;
+  const created = await api.insertGoogleTask(account, "@default", body).catch(() => null);
+  const id = str(created?.id);
+  if (!created || !id || !holds(created, body)) {
+    throw actionError(
+      "Google Tasks did not confirm the new task. Check Google Tasks before adding it again.",
+    );
+  }
+  const [, list, task] = taskSelfLink.exec(str(created.selfLink)) ?? [];
+  return {
+    ok: true as const,
+    message: "Added to Google Tasks.",
+    ...(list && task === id && { itemId: `tasks:${list}:${task}` }),
+  };
+}
+
+export async function updateMissionControlTask(
+  api: Connector,
+  bindings: Bindings,
+  itemId: string,
+  fields: MissionControlTaskFields,
+) {
+  const [, list, task] = taskItemId.exec(itemId) ?? [];
+  if (!list || !task || !bindings.tasks) {
+    throw actionError("This item is not a configured Google Task.");
+  }
+  const body = taskBody(fields);
+  if (!Object.keys(body).length) throw actionError("Nothing to change on this task.");
+  const current = await api.googleTask(bindings.tasks, list, task).catch(() => null);
+  if (current?.id !== task || current.deleted === true) {
+    throw actionError("This task is no longer in Google Tasks.");
+  }
+  const updated = await api.updateGoogleTask(bindings.tasks, list, task, body).catch(() => null);
+  if (updated?.id !== task || !holds(updated, body)) {
+    // A lost response must not read as a failure when the change was in fact saved.
+    const check =
+      updated?.id === task
+        ? null
+        : await api.googleTask(bindings.tasks, list, task).catch(() => null);
+    if (check?.id !== task || !holds(check, body)) {
+      throw actionError("Google Tasks did not confirm the change. Check the task in Google Tasks.");
+    }
+  }
+  return { ok: true as const, message: "Updated in Google Tasks.", itemId };
+}

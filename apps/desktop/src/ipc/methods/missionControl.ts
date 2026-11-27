@@ -12,6 +12,7 @@ import {
   MissionControlReplyPreviewSchema,
   GrokBotPromptResultSchema,
   missionControlPrioritySources,
+  type MissionControlActionRequest,
   type MissionControlRequest,
   type MissionControlItem,
   type MissionControlResponse,
@@ -26,9 +27,11 @@ import { macGrokBotSendDeps, sendGrokBotPrompt } from "../../missionControl/grok
 import {
   completeMissionControlIssue,
   completeMissionControlTask,
+  createMissionControlTask,
   MissionControlActionError,
   previewMissionControlReply,
   sendMissionControlReply,
+  updateMissionControlTask,
 } from "../../missionControl/actions.ts";
 import {
   bindingsAt,
@@ -41,6 +44,8 @@ import {
   readTasks,
   sharedContext,
   sourceStatus,
+  type Bindings,
+  type Connector,
 } from "../../missionControl/sources.ts";
 import { launcherJev, type JevDecider } from "../../missionControl/jev.ts";
 import {
@@ -328,6 +333,26 @@ export const getMissionControlReply = makeIpcMethod({
   }),
 });
 
+function runAction(
+  api: Connector,
+  bindings: Bindings,
+  baseDir: string,
+  request: MissionControlActionRequest,
+) {
+  switch (request.kind) {
+    case "reply":
+      return sendMissionControlReply(api, bindings, baseDir, request);
+    case "complete-linear":
+      return completeMissionControlIssue(api, bindings, request.itemId);
+    case "complete-task":
+      return completeMissionControlTask(api, bindings, request.itemId);
+    case "create-task":
+      return createMissionControlTask(api, bindings, request);
+    case "update-task":
+      return updateMissionControlTask(api, bindings, request.itemId, request);
+  }
+}
+
 export const runMissionControlAction = makeIpcMethod({
   channel: IpcChannels.RUN_MISSION_CONTROL_ACTION_CHANNEL,
   payload: MissionControlActionRequestSchema,
@@ -340,18 +365,13 @@ export const runMissionControlAction = makeIpcMethod({
       if (!bindings) return actionsUnavailable;
       const api = connector(environment.homeDirectory);
       try {
-        const outcome =
-          request.kind === "reply"
-            ? await sendMissionControlReply(api, bindings, environment.baseDir, request)
-            : request.kind === "complete-task"
-              ? await completeMissionControlTask(api, bindings, request.itemId)
-              : await completeMissionControlIssue(api, bindings, request.itemId);
+        const outcome = await runAction(api, bindings, environment.baseDir, request);
         const source =
           request.kind === "reply"
             ? prioritySourceKey("email", request.itemId.split(":")[1]!)
-            : request.kind === "complete-task"
-              ? prioritySourceKey("tasks", "Personal")
-              : prioritySourceKey("linear", "Linear");
+            : request.kind === "complete-linear"
+              ? prioritySourceKey("linear", "Linear")
+              : prioritySourceKey("tasks", "Personal");
         sourceCache?.reads.delete(source);
         return outcome;
       } catch (error) {
