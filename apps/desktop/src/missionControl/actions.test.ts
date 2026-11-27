@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- Temporary local reply receipts are part of the behavior under test.
+import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -422,6 +423,74 @@ it("posts once when two replies to the same item race with different revisions",
     );
   } finally {
     await NodeFSP.rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("turns away a reply while another to the same item is still being sent", async () => {
+  const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "screddy-reply-"));
+  try {
+    const { api, postSlackReply, setThread } = slackFixture();
+    // The first post hangs, however long it takes; nothing else may post meanwhile.
+    let finish!: () => void;
+    const slow = new Promise<void>((resolve) => (finish = resolve));
+    const post = postSlackReply.getMockImplementation()!;
+    postSlackReply.mockImplementationOnce(async (...args) => {
+      await slow;
+      return post(...args);
+    });
+    const preview = await previewMissionControlReply(api, slackBindings, slackId);
+    const first = sendMissionControlReply(api, slackBindings, directory, {
+      kind: "reply",
+      itemId: slackId,
+      revision: preview.revision,
+      body: "Ok",
+    });
+    await vi.waitFor(() => expect(postSlackReply).toHaveBeenCalledTimes(1));
+    setThread([
+      { ts: "1794952800.000100", user: "U0OTHER", text: "Launch plan is in the doc" },
+      { ts: "1794952860.000200", user: "U0OTHER", text: "<@U0ME> can you sign off?" },
+      { ts: "1794952950.000700", user: "U0THIRD", text: "Bump" },
+    ]);
+    const refreshed = await previewMissionControlReply(api, slackBindings, slackId);
+    await expect(
+      sendMissionControlReply(api, slackBindings, directory, {
+        kind: "reply",
+        itemId: slackId,
+        revision: refreshed.revision,
+        body: "Ok",
+      }),
+    ).rejects.toThrow(/Check the thread in Slack/);
+    finish();
+    await expect(first).resolves.toMatchObject({ message: "Reply posted in Slack." });
+    expect(postSlackReply).toHaveBeenCalledTimes(1);
+  } finally {
+    await NodeFSP.rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("honors an unconfirmed reply recorded by an earlier version of Screddy", async () => {
+  const itemKey = NodeCrypto.createHash("sha256")
+    .update(JSON.stringify([slackId]))
+    .digest("hex");
+  for (const legacy of [itemKey + ".pending", itemKey + ".hold.1"]) {
+    const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "screddy-reply-"));
+    try {
+      await NodeFSP.mkdir(NodePath.join(directory, "mission-control-replies"));
+      await NodeFSP.writeFile(NodePath.join(directory, "mission-control-replies", legacy), "");
+      const { api, postSlackReply } = slackFixture();
+      const preview = await previewMissionControlReply(api, slackBindings, slackId);
+      await expect(
+        sendMissionControlReply(api, slackBindings, directory, {
+          kind: "reply",
+          itemId: slackId,
+          revision: preview.revision,
+          body: "Ok",
+        }),
+      ).rejects.toThrow(/Check the thread in Slack/);
+      expect(postSlackReply).not.toHaveBeenCalled();
+    } finally {
+      await NodeFSP.rm(directory, { recursive: true, force: true });
+    }
   }
 });
 
