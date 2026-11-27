@@ -1285,6 +1285,36 @@ export const MissionControlAgentActivitySchema = Schema.Struct({
 });
 export type MissionControlAgentActivity = typeof MissionControlAgentActivitySchema.Type;
 
+/** A job this Mac runs on a schedule or in the background: a launchd job, a cron line or a Codex automation. */
+export const HostAutomationSchema = Schema.Struct({
+  id: Schema.String,
+  source: Schema.Literals(["launchd", "cron", "codex"]),
+  scope: Schema.Literals(["user", "system"]),
+  name: Schema.String,
+  kind: Schema.Literals(["scheduled", "background", "login", "on-demand"]),
+  schedule: Schema.String,
+  /** The program and arguments, with secret-looking values replaced; null when it runs a prompt. */
+  command: Schema.NullOr(Schema.String),
+  path: Schema.String,
+  state: Schema.Literals([
+    "running",
+    "idle",
+    "failed",
+    "not-loaded",
+    "paused",
+    "disabled",
+    "unknown",
+  ]),
+  detail: Schema.optional(Schema.String),
+});
+export type HostAutomation = typeof HostAutomationSchema.Type;
+export const HostAutomationsSchema = Schema.Struct({
+  available: Schema.Boolean,
+  checkedAt: Schema.NullOr(Schema.String),
+  items: Schema.Array(HostAutomationSchema),
+});
+export type HostAutomations = typeof HostAutomationsSchema.Type;
+
 export const MissionControlJevStatusSchema = Schema.Literals([
   "unsupported",
   "disabled",
@@ -1347,6 +1377,8 @@ export type DesktopTokenUsageMenuAction = "open" | "refresh";
 
 export interface DesktopBridge {
   getMissionControlJevStatus?: () => Promise<MissionControlJevStatus>;
+  /** Every launchd job, cron line and Codex automation on this Mac (macOS only). */
+  getHostAutomations?: () => Promise<HostAutomations>;
   setMissionControlJevKey?: (key: string | null) => Promise<MissionControlJevSetupResult>;
   getMissionControlAgentActivity: (refresh: boolean) => Promise<MissionControlAgentActivity>;
   getMissionControl: (request: MissionControlRequest) => Promise<MissionControlResponse>;

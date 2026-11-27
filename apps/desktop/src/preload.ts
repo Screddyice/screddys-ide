@@ -257,6 +257,7 @@ contextBridge.exposeInMainWorld("desktopBridge", {
   openExternal: (url: string) => ipcRenderer.invoke(IpcChannels.OPEN_EXTERNAL_CHANNEL, url),
   getMissionControlAgentActivity: (refresh) =>
     ipcRenderer.invoke(IpcChannels.GET_MISSION_CONTROL_AGENT_ACTIVITY_CHANNEL, refresh),
+  getHostAutomations: () => ipcRenderer.invoke(IpcChannels.GET_HOST_AUTOMATIONS_CHANNEL),
   routeMissionControlItems: (requests) =>
     ipcRenderer.invoke(IpcChannels.ROUTE_MISSION_CONTROL_ITEMS_CHANNEL, requests),
   sendGrokBotPrompt: (link) => ipcRenderer.invoke(IpcChannels.SEND_GROK_BOT_PROMPT_CHANNEL, link),

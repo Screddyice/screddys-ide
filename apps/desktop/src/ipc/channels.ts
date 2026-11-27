@@ -148,5 +148,6 @@ export const RUN_MISSION_CONTROL_ACTION_CHANNEL = "desktop:run-mission-control-a
 export const GET_MISSION_CONTROL_AGENT_ACTIVITY_CHANNEL =
   "desktop:get-mission-control-agent-activity";
 
+export const GET_HOST_AUTOMATIONS_CHANNEL = "desktop:get-host-automations";
 export const ROUTE_MISSION_CONTROL_ITEMS_CHANNEL = "desktop:route-mission-control-items";
 export const SEND_GROK_BOT_PROMPT_CHANNEL = "desktop:send-grok-bot-prompt";
