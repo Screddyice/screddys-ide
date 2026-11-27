@@ -975,6 +975,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     providerSettingsOnly: true,
   },
   {
+    id: "usage-accounts",
+    title: "Usage accounts",
+    to: "/settings/providers",
+    searchTerms: [
+      "usage accounts token tracking total tokens count add account profile home folder CLAUDE_CONFIG_DIR CODEX_HOME GROK_HOME claude codex grok menu bar remove",
+    ],
+    providerSettingsOnly: true,
+  },
+  {
     id: "text-generators",
     title: "Text generators",
     to: "/settings/providers",
