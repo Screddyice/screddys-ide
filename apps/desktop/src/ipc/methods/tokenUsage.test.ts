@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 vi.mock("electron", () => ({}));
 
-import { usageMenuTemplate, usageTrayTooltip } from "./tokenUsage.ts";
+import { usageMenuTemplate, usageTrayTitle, usageTrayTooltip } from "./tokenUsage.ts";
 
 const period = (totalTokens: number): DesktopTokenUsagePeriod => ({
   totalTokens,
@@ -34,6 +34,14 @@ describe("usageTrayTooltip", () => {
       "2.73B tokens · 1.20M/min",
     );
     expect(usageTrayTooltip({ loading: false, summary: summary(0) })).toBe("2.73B tokens · 0/min");
+  });
+});
+
+describe("usageTrayTitle", () => {
+  it("shows only today's total beside the logo, and nothing until usage loads", () => {
+    expect(usageTrayTitle({ loading: true, summary: null })).toBe("");
+    expect(usageTrayTitle({ loading: false, summary: summary() })).toBe("2.73B");
+    expect(usageTrayTitle({ loading: false, summary: summary(1_200_000) })).toBe("2.73B");
   });
 });
 
