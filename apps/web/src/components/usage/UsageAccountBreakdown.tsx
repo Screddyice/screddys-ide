@@ -4,7 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 
 import type { EnvironmentUsageStatus } from "../../state/usage";
 import { InlineButton } from "../ui/button";
-import { usageAccountRows } from "./usageAccounts";
+import { usageAccountRows, usageSourceName } from "./usageAccounts";
 import { PROVIDER_PRESENTATION } from "./usageProviders";
 
 /** Tokens or cost per account folder in the shown window, with a way to add more accounts. */
@@ -47,7 +47,8 @@ export function UsageAccountBreakdown({
             </tr>
           ) : (
             rows.map((row, index) => {
-              const where = row.dir.startsWith("/") || row.dir.startsWith("~") ? row.dir : null;
+              // An unnamed row is already named by its home; a named account also shows where it lives.
+              const where = row.account ? usageSourceName(row.provider, row.dir, undefined) : null;
               return (
                 <tr
                   key={row.key}

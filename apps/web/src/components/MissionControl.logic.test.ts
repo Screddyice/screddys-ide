@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  addTokenSample,
+  throughputFromSamples,
   missionControlThreadView,
   summarizeRunningAgents,
   tokensPerMinute,
@@ -66,5 +68,25 @@ describe("tokensPerMinute", () => {
     expect(
       tokensPerMinute({ tokens: 1_000, atMs: at(2) }, { tokens: 2_000, atMs: at(2) }),
     ).toBeNull();
+  });
+});
+
+describe("throughputFromSamples", () => {
+  const at = (seconds: number) => Date.parse("2026-11-24T05:00:00Z") + seconds * 1000;
+  const reads = (...pairs: [number, number][]) =>
+    pairs.reduce<ReturnType<typeof addTokenSample>>(
+      (samples, [seconds, tokens]) => addTokenSample(samples, { tokens, atMs: at(seconds) }),
+      [],
+    );
+
+  it("measures across at least 45 seconds, so reads seconds apart don't read as 0/min", () => {
+    // Three readers share the usage report, so reads can land seconds apart.
+    expect(throughputFromSamples(reads([0, 1_000], [5, 1_000]))).toBeNull();
+    expect(throughputFromSamples(reads([0, 1_000], [55, 4_000], [60, 4_000]))).toBe(3_000);
+  });
+
+  it("starts over at midnight and drops reads older than five minutes", () => {
+    expect(throughputFromSamples(reads([0, 9_000], [60, 100]))).toBeNull();
+    expect(reads([0, 1], [200, 2], [400, 3]).map(({ tokens }) => tokens)).toEqual([2, 3]);
   });
 });

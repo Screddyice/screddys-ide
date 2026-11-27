@@ -112,7 +112,11 @@ describe("desktop usage menu", () => {
       ],
       today,
       earlier,
-      new Map([["claude", "Claude Ultra Subscription"]]),
+      new Map([
+        ["claude", "Claude Ultra Subscription"],
+        // "Codex account" names no plan, so it shows none rather than "account".
+        ["codex", "Codex account"],
+      ]),
     );
     expect(result?.providers.map(({ label, plan }) => [label, plan])).toEqual([
       ["Claude Code", "Ultra"],
