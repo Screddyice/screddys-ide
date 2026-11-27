@@ -36,8 +36,24 @@ const secretFlagInText = new RegExp(
   `(^|\\s)(--?[\\w-]*${SECRET}[\\w-]*)(=|\\s+)${quotedValue}`,
   "gi",
 );
-// A secret in a URL query, as in ?token=… or &api_key=…; the rest of the URL stays.
-const secretQueryParam = new RegExp(`([?&][\\w.-]*${SECRET}[\\w.-]*=)[^&#\\s"']*`, "gi");
+const secretName = new RegExp(SECRET, "i");
+// Every URL query parameter, as in ?token=… or &api_key=…; only the value is ever hidden.
+const queryParam = /([?&])([^=&#\s"']+)=([^&#\s"']*)/g;
+
+function decodedName(name: string): string {
+  try {
+    return decodeURIComponent(name.replace(/\+/g, " "));
+  } catch {
+    return name;
+  }
+}
+
+/** Hides a query value whose name, once URL-decoded (so %74oken is token), looks like a secret. */
+function hideSecretQueryValues(text: string): string {
+  return text.replace(queryParam, (whole, separator: string, name: string) =>
+    secretName.test(decodedName(name)) ? `${separator}${name}=[hidden]` : whole,
+  );
+}
 // The name may start with the secret word itself, as in TOKEN=…
 const secretAssignmentInText = new RegExp(
   `(^|\\s)((?:[A-Za-z_][\\w-]*)?${SECRET}[\\w-]*=)${quotedValue}`,
@@ -59,7 +75,7 @@ export function commandLine(args: readonly string[]): string {
       return "[hidden]";
     }
     if (secretFlag.test(arg)) hideNext = true;
-    return arg.replace(secretAssignment, "$1[hidden]").replace(secretQueryParam, "$1[hidden]");
+    return hideSecretQueryValues(arg.replace(secretAssignment, "$1[hidden]"));
   });
   return cap(shown.join(" "));
 }
@@ -67,10 +83,11 @@ export function commandLine(args: readonly string[]): string {
 /** The same for a whole shell command line, as cron stores it; quoted values stay whole. */
 function shellCommand(command: string): string {
   return cap(
-    command
-      .replace(secretFlagInText, "$1$2$3[hidden]")
-      .replace(secretAssignmentInText, "$1$2[hidden]")
-      .replace(secretQueryParam, "$1[hidden]"),
+    hideSecretQueryValues(
+      command
+        .replace(secretFlagInText, "$1$2$3[hidden]")
+        .replace(secretAssignmentInText, "$1$2[hidden]"),
+    ),
   );
 }
 
