@@ -24,3 +24,20 @@ it.each(["/", "/automations", "/settings/scheduled-tasks"])(
     }
   },
 );
+
+it.each(["/", "/usage"])("lists Usage right under Automations (at %s)", async (path) => {
+  await using screen = await render(
+    <SidebarProvider>
+      <SidebarWorkspaceLinks showMissionControl />
+    </SidebarProvider>,
+    { router: path },
+  );
+  const usage = screen.getByRole("link", { name: "Usage" });
+  await expect.element(usage).toHaveAttribute("href", "/usage");
+  const names = screen
+    .getByRole("link")
+    .elements()
+    .map((link) => link.textContent);
+  expect(names).toEqual(["Mission Control", "Automations", "Usage"]);
+  if (path === "/usage") await expect.element(usage).toHaveAttribute("data-active", "true");
+});
