@@ -49,6 +49,9 @@ describe("launchdAutomation", () => {
       agent({ Label: "x", Program: "/opt/x", StartCalendarInterval })?.schedule;
     expect(schedule({ Hour: 8, Minute: 5 })).toBe("Daily at 08:05");
     expect(schedule({ Minute: 30 })).toBe("Hourly at :30");
+    // launchd treats a missing Minute as every minute of that hour.
+    expect(schedule({ Hour: 8 })).toBe("Daily, every minute 08:00–08:59");
+    expect(schedule({ Weekday: 1, Hour: 8 })).toBe("Mondays, every minute 08:00–08:59");
     expect(schedule({ Day: 1, Hour: 9, Minute: 0 })).toBe("Monthly on day 1 at 09:00");
     expect(
       schedule([
@@ -186,6 +189,15 @@ describe("cronAutomations", () => {
       state: "idle",
     });
     expect(new Set(jobs.map(({ id }) => id)).size).toBe(jobs.length);
+  });
+
+  it("hides bare secret assignments at the start of a word", () => {
+    const [job] = cronAutomations(
+      "0 7 * * * TOKEN=abc PASSWORD='p w' KEY=k /opt/example/run.sh --port 2\n",
+    );
+    expect(job?.command).toBe(
+      "TOKEN=[hidden] PASSWORD=[hidden] KEY=[hidden] /opt/example/run.sh --port 2",
+    );
   });
 });
 
