@@ -169,6 +169,7 @@ function slackFixture(
   );
   return {
     api: { proxy, postSlackReply } as unknown as Connector,
+    proxy,
     postSlackReply,
     setThread(messages: Record<string, unknown>[]) {
       thread = messages;
@@ -366,6 +367,59 @@ it("does not post again after an unconfirmed reply, even once the thread moves o
       }),
     ).rejects.toThrow(/Check the thread in Slack/);
     expect(postSlackReply).toHaveBeenCalledTimes(1);
+  } finally {
+    await NodeFSP.rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("posts once when two replies to the same item race with different revisions", async () => {
+  const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "screddy-reply-"));
+  try {
+    const { api, proxy, postSlackReply, setThread } = slackFixture();
+    const root = { ts: "1794952800.000100", user: "U0OTHER", text: "Launch plan is in the doc" };
+    const mention = { ts: "1794952860.000200", user: "U0OTHER", text: "<@U0ME> can you sign off?" };
+    const older = [root, mention];
+    const newer = [...older, { ts: "1794952950.000700", user: "U0THIRD", text: "Bump" }];
+    setThread(older);
+    const first = await previewMissionControlReply(api, slackBindings, slackId);
+    setThread(newer);
+    const second = await previewMissionControlReply(api, slackBindings, slackId);
+
+    // Hold both requests until both have passed their up-front checks, then let the first one
+    // read the older thread and the second the newer one, so each validates its own revision.
+    const read = proxy.getMockImplementation()!;
+    const threads = [older, newer];
+    let arrived = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    proxy.mockImplementation(async (toolkit, account, path, params) => {
+      if (path === "/api/auth.test") {
+        arrived += 1;
+        if (arrived === 2) release();
+        await gate;
+      }
+      if (path === "/api/conversations.replies") setThread(threads.shift() ?? newer);
+      return read(toolkit, account, path, params);
+    });
+    const send = (revision: string) =>
+      sendMissionControlReply(api, slackBindings, directory, {
+        kind: "reply",
+        itemId: slackId,
+        revision,
+        body: "Ok",
+      })
+        .then(
+          () => "sent",
+          (error: Error) => error.message,
+        )
+        // A request refused before the gate must not leave the other one waiting there.
+        .finally(() => release());
+    const results = await Promise.all([send(first.revision), send(second.revision)]);
+    // Only one request gets past the item's hold; the other is turned away before it can send.
+    expect(postSlackReply.mock.calls.length).toBeLessThanOrEqual(1);
+    expect(results).toContain(
+      "Slack did not confirm the reply. Check the thread in Slack before sending again.",
+    );
   } finally {
     await NodeFSP.rm(directory, { recursive: true, force: true });
   }
