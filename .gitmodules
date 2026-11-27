@@ -1,0 +1,3 @@
+[submodule "vendor/token-monitor"]
+	path = vendor/token-monitor
+	url = https://github.com/Screddyice/token-monitor.git
