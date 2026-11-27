@@ -343,9 +343,6 @@ export async function sendMissionControlReply(
   const receiptDirectory = NodePath.join(baseDir, "mission-control-replies");
   const receipt = NodePath.join(receiptDirectory, hash([request.itemId, request.revision]));
   const sentReceipt = receipt + ".sent";
-  // An unconfirmed reply may still land after the thread moves on and the revision changes, so
-  // it holds every revision of the item until it shows up in the thread or PENDING_MS passes.
-  const pending = NodePath.join(receiptDirectory, hash([request.itemId]) + ".pending");
   const done = { ok: true as const, message: slack ? "Reply posted in Slack." : "Reply sent." };
   if (
     await NodeFSP.access(sentReceipt).then(
@@ -362,33 +359,65 @@ export async function sendMissionControlReply(
   )
     throw actionError(unconfirmedReply);
 
-  const pendingSince = await NodeFSP.stat(pending).then(
-    (stat) => stat.mtimeMs,
-    () => null,
-  );
-  // @effect-diagnostics-next-line globalDate:off - Compared with a file's mtime in plain async code outside any Effect fiber.
-  if (pendingSince !== null && Date.now() - pendingSince < PENDING_MS) {
-    throw actionError(unconfirmedReply);
-  }
-
-  // Rechecks the thread: a reply that did land since shows up here as "already replied".
-  const send = await (slack ? slackSend : gmailSend)(api, bindings, request);
   await NodeFSP.mkdir(receiptDirectory, { recursive: true, mode: 0o700 });
+  // One reply at a time per item, taken before the thread is read again, so a second request
+  // waits for the first to settle and then sees its reply as "already replied".
+  const hold = await holdItem(receiptDirectory, hash([request.itemId]), unconfirmedReply);
+  const release = () => NodeFSP.rm(hold, { force: true }).catch(() => {});
+  let send: () => Promise<boolean>;
   try {
+    send = await (slack ? slackSend : gmailSend)(api, bindings, request);
     await NodeFSP.writeFile(receipt, "", { flag: "wx", mode: 0o600 });
   } catch (error) {
+    await release();
     if (obj(error).code === "EEXIST") throw actionError(unconfirmedReply);
     throw error;
   }
 
-  await NodeFSP.writeFile(pending, "", { mode: 0o600 });
-
   // Reserve the exact incoming message before dispatch. A lost acknowledgement
-  // cannot produce a second send, even after restarting the desktop.
+  // cannot produce a second send, even after restarting the desktop. An unconfirmed
+  // reply keeps the hold, since it may still land after the thread moves on.
   if (!(await send().catch(() => false))) throw actionError(unconfirmedReply);
+  // The reply went out; bookkeeping failures must not report it as failed.
   await NodeFSP.writeFile(sentReceipt, "", { flag: "wx", mode: 0o600 }).catch(() => {});
-  await NodeFSP.rm(pending, { force: true });
+  await release();
   return done;
+}
+
+/**
+ * Takes the item's send hold, or refuses while a hold under PENDING_MS old exists. Holds are
+ * numbered files made with an exclusive create, so of two callers taking over the same stale
+ * hold only one gets the next number.
+ */
+async function holdItem(directory: string, itemKey: string, message: string) {
+  const prefix = itemKey + ".hold.";
+  const held = (await NodeFSP.readdir(directory))
+    .filter((name) => name.startsWith(prefix))
+    .map((name) => Number(name.slice(prefix.length)))
+    .filter((number) => Number.isSafeInteger(number) && number > 0);
+  const latest = Math.max(0, ...held);
+  if (latest > 0) {
+    const since = await NodeFSP.stat(NodePath.join(directory, prefix + latest)).then(
+      (stat) => stat.mtimeMs,
+      () => null,
+    );
+    // @effect-diagnostics-next-line globalDate:off - Compared with a file's mtime in plain async code outside any Effect fiber.
+    if (since !== null && Date.now() - since < PENDING_MS) throw actionError(message);
+  }
+  const hold = NodePath.join(directory, prefix + (latest + 1));
+  try {
+    await NodeFSP.writeFile(hold, "", { flag: "wx", mode: 0o600 });
+  } catch (error) {
+    if (obj(error).code === "EEXIST") throw actionError(message);
+    throw error;
+  }
+  // Older holds are past PENDING_MS, so nobody is waiting on them.
+  await Promise.all(
+    held.map((number) =>
+      NodeFSP.rm(NodePath.join(directory, prefix + number), { force: true }).catch(() => {}),
+    ),
+  );
+  return hold;
 }
 
 function completionState(connection: Record<string, unknown>) {
