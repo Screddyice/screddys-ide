@@ -1,3 +1,5 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -14,6 +16,8 @@ import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
 
+import * as DesktopConfig from "../app/DesktopConfig.ts";
+import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopObservability from "../app/DesktopObservability.ts";
 import * as DesktopState from "../app/DesktopState.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
@@ -111,6 +115,27 @@ function layerPool(
   return DesktopBackendPool.layer.pipe(
     Layer.provideMerge(
       Layer.mergeAll(
+        // Unpackaged, so taking over from a background server never reaches `ps` here.
+        DesktopEnvironment.layer({
+          dirname: "/repo/apps/desktop/src",
+          homeDirectory: "/tmp/t3",
+          platform: "darwin",
+          processArch: "arm64",
+          appVersion: "0.0.0",
+          appPath: "/repo",
+          isPackaged: false,
+          resourcesPath: "/missing/resources",
+          runningUnderArm64Translation: false,
+        }).pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              NodeServices.layer,
+              NodeCrypto.layer,
+              DesktopConfig.layerTest({ T3CODE_HOME: "/tmp/t3" }),
+            ),
+          ),
+          Layer.orDie,
+        ),
         FileSystem.layerNoop({ exists: () => Effect.succeed(true) }),
         backend?.layer ??
           Layer.succeed(

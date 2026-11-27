@@ -120,6 +120,25 @@
   background: rgba(var(--overlay-rgb), 0.04);
 }
 
+/* Token Monitor's row layout pads these accounts with a more specific selector: no inline
+   padding, none above the first card or below the last. Match it so every card keeps the
+   same inset, space the cards apart, and drop the row divider the borders replace. */
+.home-module-limits:not(.home-module-limits-classic) .home-module-body {
+  row-gap: 8px;
+}
+
+.home-module-limits:not(.home-module-limits-classic) .home-limit-account,
+.home-module-limits:not(.home-module-limits-classic) .home-limit-account:first-child,
+.home-module-limits:not(.home-module-limits-classic) .home-limit-account:last-child {
+  padding: 9px;
+}
+
+.home-module-limits:not(.home-module-limits-classic)
+  .home-limit-account
+  + .home-limit-account::before {
+  content: none;
+}
+
 .home-module-limits .home-limit-account-head {
   grid-template-columns: 12px minmax(0, 1fr);
 }
