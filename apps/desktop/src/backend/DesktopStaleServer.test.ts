@@ -111,7 +111,7 @@ describe("ownedHomeRecovery", () => {
   const recovery = (results: ReadonlyArray<TakeOverResult>) => {
     const calls: Array<string> = [];
     let next = 0;
-    const { recover, reset } = ownedHomeRecovery({
+    const { recover, ready } = ownedHomeRecovery({
       takeOver: Effect.sync(() => {
         calls.push("takeOver");
         return results[Math.min(next++, results.length - 1)]!;
@@ -120,8 +120,9 @@ describe("ownedHomeRecovery", () => {
       giveUp: Effect.sync(() => void calls.push("giveUp")),
       pause: Effect.void,
       maxAttempts: 3,
+      afterRecovered: Effect.sync(() => void calls.push("afterRecovered")),
     });
-    return { recover, reset, calls };
+    return { recover, ready, calls };
   };
   const stopped: TakeOverResult = { _tag: "Stopped", pid: 1, serverVersion: "0.1.71" };
 
@@ -157,9 +158,9 @@ describe("ownedHomeRecovery", () => {
 
   it.effect("counts attempts again after the server has started", () =>
     Effect.gen(function* () {
-      const { recover, reset, calls } = recovery([stopped]);
+      const { recover, ready, calls } = recovery([stopped]);
       for (let attempt = 0; attempt < 3; attempt++) yield* recover;
-      yield* reset;
+      yield* ready;
       yield* recover;
       expect(calls).toEqual([
         "takeOver",
@@ -168,9 +169,30 @@ describe("ownedHomeRecovery", () => {
         "restart",
         "takeOver",
         "restart",
+        "afterRecovered",
         "takeOver",
         "restart",
       ]);
+    }),
+  );
+
+  // The window may have loaded against the server that took the data folder; it needs one reload.
+  it.effect("runs the after-recovery step once when the restarted server is ready", () =>
+    Effect.gen(function* () {
+      const { recover, ready, calls } = recovery([{ _tag: "Kept" }, stopped]);
+      yield* recover;
+      yield* recover;
+      yield* ready;
+      yield* ready;
+      expect(calls).toEqual(["takeOver", "restart", "takeOver", "restart", "afterRecovered"]);
+    }),
+  );
+
+  it.effect("does nothing extra when the server came up without a recovery", () =>
+    Effect.gen(function* () {
+      const { ready, calls } = recovery([stopped]);
+      yield* ready;
+      expect(calls).toEqual([]);
     }),
   );
 

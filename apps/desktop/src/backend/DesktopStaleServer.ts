@@ -78,8 +78,14 @@ export function ownedHomeRecovery(input: {
   /** Lets a new owner that has not recorded itself yet do so before the next attempt. */
   readonly pause: Effect.Effect<void>;
   readonly maxAttempts: number;
+  /** Runs once the restarted server is ready, for example to reload a window that loaded meanwhile. */
+  readonly afterRecovered: Effect.Effect<void>;
 }) {
   let attempts = 0;
+  let restarted = false;
+  const restart = Effect.sync(() => {
+    restarted = true;
+  }).pipe(Effect.andThen(input.restart));
   const recover = Effect.suspend(() => {
     if (attempts >= input.maxAttempts) return input.giveUp;
     attempts += 1;
@@ -87,9 +93,9 @@ export function ownedHomeRecovery(input: {
       Effect.flatMap((result) => {
         switch (result._tag) {
           case "Stopped":
-            return input.restart;
+            return restart;
           case "Kept":
-            return input.pause.pipe(Effect.andThen(input.restart));
+            return input.pause.pipe(Effect.andThen(restart));
           case "Foreign":
           case "Stuck":
             return input.giveUp;
@@ -97,11 +103,17 @@ export function ownedHomeRecovery(input: {
       }),
     );
   });
-  /** Call once the server is up, so a later race in the same session gets the full number of attempts. */
-  const reset = Effect.sync(() => {
+  /**
+   * Call each time the server is up: a later race in the same session gets the full number of
+   * attempts again, and the first ready after a recovery restart runs `afterRecovered`.
+   */
+  const ready = Effect.suspend(() => {
     attempts = 0;
+    if (!restarted) return Effect.void;
+    restarted = false;
+    return input.afterRecovered;
   });
-  return { recover, reset };
+  return { recover, ready };
 }
 
 const isAlive = (pid: number) =>

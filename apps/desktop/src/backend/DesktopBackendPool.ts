@@ -136,6 +136,11 @@ export const layer = Layer.effect(
         .pipe(Effect.andThen(electronApp.quit)),
       pause: Effect.sleep("1 second"),
       maxAttempts: 4,
+      // The window opens while the primary is still starting, so it may have loaded against the
+      // server that took the data folder; reload it once this app's server is up.
+      afterRecovered: desktopWindow.flushRendererStorage.pipe(
+        Effect.andThen(desktopWindow.runMainContentsCommand("reload")),
+      ),
     });
 
     // Persist fatal Windows fallbacks; transient transport failures must preserve the user's WSL preference.
@@ -185,8 +190,7 @@ export const layer = Layer.effect(
       configResolve: configuration.resolvePrimary,
       // Absorb window errors so readiness can reset restartAttempt.
       onReady: (httpBaseUrl) =>
-        ownedHome.reset.pipe(
-          Effect.andThen(desktopWindow.handleBackendReady(httpBaseUrl)),
+        desktopWindow.handleBackendReady(httpBaseUrl).pipe(
           // Only once the main window exists, so the recovery window never closes into nothing.
           Effect.andThen(SubscriptionRef.set(primaryBackendStartup, { _tag: "Ready" })),
           Effect.catch((error) =>
@@ -194,6 +198,8 @@ export const layer = Layer.effect(
               error: error.message,
             }),
           ),
+          // After the catch, so a window error never leaves the retry count spent.
+          Effect.andThen(ownedHome.ready),
         ),
       onStartupFailure: (failure) =>
         SubscriptionRef.set(primaryBackendStartup, { _tag: "Failing", ...failure }),
