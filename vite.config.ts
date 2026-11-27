@@ -168,6 +168,8 @@ export default defineConfig({
     ignorePatterns: [
       ".repos/**",
       "infra/task-cache/vendor/**",
+      // Git submodules with their own tooling (Token Monitor fork).
+      "vendor/**",
       // Macroscope requires one glob per line; Markdown formatting corrupts it.
       ".macroscope/ignore.md",
       ".alchemy",
@@ -204,6 +206,7 @@ export default defineConfig({
       ".repos",
       ".repos/**",
       "infra/task-cache/vendor/**",
+      "vendor/**",
       "dist",
       "dist-electron",
       "node_modules",
