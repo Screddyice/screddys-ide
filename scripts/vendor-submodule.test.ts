@@ -4,9 +4,16 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import config from "../vite.config.ts";
-
 const repoRoot = NodePath.resolve(import.meta.dirname, "..");
+
+interface IgnoreConfig {
+  readonly fmt?: { readonly ignorePatterns?: readonly string[] };
+  readonly lint?: { readonly ignorePatterns?: readonly string[] };
+}
+
+// The root config sits outside this project's tsconfig, so it is loaded at run time.
+const loadRootConfig = async (): Promise<IgnoreConfig> =>
+  ((await import(NodePath.join(repoRoot, "vite.config.ts"))) as { default: IgnoreConfig }).default;
 
 describe("vendored submodules", () => {
   it("declares the Token Monitor fork at vendor/token-monitor", () => {
@@ -17,7 +24,8 @@ describe("vendored submodules", () => {
   });
 
   // A checked-out submodule brings its own lint and format setup and thousands of files.
-  it("keeps Screddy's fmt and lint out of vendor/", () => {
+  it("keeps Screddy's fmt and lint out of vendor/", async () => {
+    const config = await loadRootConfig();
     expect(config.fmt?.ignorePatterns).toContain("vendor/**");
     expect(config.lint?.ignorePatterns).toContain("vendor/**");
   });
