@@ -77,7 +77,9 @@ import {
   WorkspaceBreadcrumbText,
 } from "../WorkspaceBreadcrumb";
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
+import { UsageAccountBreakdown } from "./UsageAccountBreakdown";
 import { UsageLimitsSection } from "./UsageLimits";
+import { UsageLivePanel } from "./UsageLivePanel";
 import { UsagePriceOverrides } from "./UsagePriceOverrides";
 import { UsageProviderChart } from "./UsageProviderChart";
 import { SpeedPremium, UsageModelDialog } from "./UsageModelDialog";
@@ -609,7 +611,7 @@ function UsageOverview({
   readonly showChatGptSharing: boolean;
   readonly onSelectModel: (key: string) => void;
 }) {
-  const [breakdown, setBreakdown] = useState<"model" | "time">("model");
+  const [breakdown, setBreakdown] = useState<"model" | "time" | "account">("model");
   const shownHourly = shownWindow.resolution === "hour";
   const loading = usageLoading(showingKept, selectedEnvironments, refreshingUsage, hiddenProviders);
   // Copy the primitive; JSX reads of loading.partial would merge all derivations into one compiler cache
@@ -650,6 +652,7 @@ function UsageOverview({
 
   return (
     <div aria-busy={loadingPartial} className="flex flex-col gap-6">
+      <UsageLivePanel />
       {sourceMessages.map((message) => (
         <p key={message} className="mb-4 text-sm text-muted-foreground">
           {message}
@@ -851,13 +854,16 @@ function UsageOverview({
             value={[breakdown]}
             onValueChange={(next) => {
               const value = next[0];
-              if (value === "model" || value === "time") setBreakdown(value);
+              if (value === "model" || value === "time" || value === "account") {
+                setBreakdown(value);
+              }
             }}
           >
             {(
               [
                 { value: "model", label: "Model" },
                 { value: "time", label: shownHourly ? "Hour" : "Day" },
+                { value: "account", label: "Account" },
               ] as const
             ).map((option) => (
               <Toggle key={option.value} value={option.value}>
@@ -867,7 +873,13 @@ function UsageOverview({
           </ToggleGroup>
         </div>
 
-        {breakdown === "model" ? (
+        {breakdown === "account" ? (
+          <UsageAccountBreakdown
+            environments={selectedEnvironments}
+            hiddenProviders={hiddenProviders}
+            metric={metric}
+          />
+        ) : breakdown === "model" ? (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-right text-xs text-muted-foreground">
