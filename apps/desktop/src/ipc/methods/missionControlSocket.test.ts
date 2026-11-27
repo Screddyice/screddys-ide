@@ -111,7 +111,7 @@ it("replaces a stale socket file but leaves a live one to the app that owns it",
 
 it("binds beside the final socket path, never at a longer one", () => {
   // The packaged app's Node refuses a Unix socket path over 104 bytes; the test runner's may not.
-  for (const base of ["/Users/someone/.screddys-ide", "/tmp/" + "d".repeat(70)]) {
+  for (const base of ["/opt/example/.screddys-ide", "/tmp/" + "d".repeat(70)]) {
     const path = missionControlSocketPath(base);
     const staging = socketStagingPath(path);
     expect(NodePath.dirname(staging)).toBe(NodePath.dirname(path));
@@ -170,4 +170,23 @@ it("lets apps act only on unrestricted items Mission Control showed them, or tas
   for (const itemId of ["tasks:l:secret", "slack:C0SECRET:1794952800.000200"]) {
     expect(run).not.toHaveBeenCalledWith("action", expect.objectContaining({ itemId }));
   }
+});
+
+it("stops allowing an item once a later answer marks it restricted", async () => {
+  let restricted = false;
+  const dispatch = guardShownItems(async (op) =>
+    op === "priorities"
+      ? { items: [{ id: "tasks:l:1", ...(restricted && { taskContext: { restricted: true } }) }] }
+      : { ok: true, message: "Done" },
+  );
+  await dispatch("priorities", { view: "priorities", refresh: false });
+  expect(await dispatch("action", { kind: "complete-task", itemId: "tasks:l:1" })).toMatchObject({
+    ok: true,
+  });
+  restricted = true;
+  await dispatch("priorities", { view: "priorities", refresh: false });
+  expect(await dispatch("action", { kind: "complete-task", itemId: "tasks:l:1" })).toEqual({
+    ok: false,
+    error: "Read Mission Control again, then act on an item it shows.",
+  });
 });

@@ -92,7 +92,11 @@ export function guardShownItems(dispatch: Dispatch): Dispatch {
       for (const item of Array.isArray(fields(result).items)
         ? (fields(result).items as unknown[])
         : []) {
-        if (fields(fields(item).taskContext).restricted !== true) remember(fields(item).id);
+        const id = fields(item).id;
+        // An item that has become restricted loses any permission it had before.
+        if (fields(fields(item).taskContext).restricted === true) {
+          if (typeof id === "string") shown.delete(id);
+        } else remember(id);
       }
     } else if (action?.kind === "create-task" && fields(result).ok === true) {
       remember(fields(result).itemId);
