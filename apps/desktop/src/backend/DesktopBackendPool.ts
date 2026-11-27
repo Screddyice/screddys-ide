@@ -119,7 +119,7 @@ export const layer = Layer.effect(
       >();
     // Set once the primary exists; the owned-home recovery below only runs after it has started.
     let primaryInstance: DesktopBackendInstance | undefined;
-    const recoverOwnedHome = DesktopStaleServer.ownedHomeRecovery({
+    const ownedHome = DesktopStaleServer.ownedHomeRecovery({
       takeOver: DesktopStaleServer.takeOverLocalServerForThisApp().pipe(
         Effect.provide(takeOverContext),
       ),
@@ -185,7 +185,8 @@ export const layer = Layer.effect(
       configResolve: configuration.resolvePrimary,
       // Absorb window errors so readiness can reset restartAttempt.
       onReady: (httpBaseUrl) =>
-        desktopWindow.handleBackendReady(httpBaseUrl).pipe(
+        ownedHome.reset.pipe(
+          Effect.andThen(desktopWindow.handleBackendReady(httpBaseUrl)),
           // Only once the main window exists, so the recovery window never closes into nothing.
           Effect.andThen(SubscriptionRef.set(primaryBackendStartup, { _tag: "Ready" })),
           Effect.catch((error) =>
@@ -198,7 +199,7 @@ export const layer = Layer.effect(
         SubscriptionRef.set(primaryBackendStartup, { _tag: "Failing", ...failure }),
       onShutdown: () => desktopWindow.handleBackendNotReady,
       onPreflightFailed: handlePrimaryPreflightFailure,
-      onStateDirOwned: () => recoverOwnedHome,
+      onStateDirOwned: () => ownedHome.recover,
     });
 
     primaryInstance = primary;

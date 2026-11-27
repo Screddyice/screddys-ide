@@ -80,7 +80,7 @@ export function ownedHomeRecovery(input: {
   readonly maxAttempts: number;
 }) {
   let attempts = 0;
-  return Effect.suspend(() => {
+  const recover = Effect.suspend(() => {
     if (attempts >= input.maxAttempts) return input.giveUp;
     attempts += 1;
     return input.takeOver.pipe(
@@ -97,6 +97,11 @@ export function ownedHomeRecovery(input: {
       }),
     );
   });
+  /** Call once the server is up, so a later race in the same session gets the full number of attempts. */
+  const reset = Effect.sync(() => {
+    attempts = 0;
+  });
+  return { recover, reset };
 }
 
 const isAlive = (pid: number) =>
