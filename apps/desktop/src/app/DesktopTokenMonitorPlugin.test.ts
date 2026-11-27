@@ -170,7 +170,8 @@ it.layer(NodeServices.layer)("DesktopTokenMonitorPlugin", (it) => {
       const { fs, path, manifest } = yield* setup;
       const released: Record<string, string> = {
         "1.6.5": "ab1a10537fb16b3cdbcd089ec0e730242aa8413cc06eb4fd616d726fb221c42c",
-        "1.6.6": "b27e18125773cf44b8c67abea0a452a881bb7e35d71367482abc7a01ec07d08b",
+        "1.6.6": "96a1526fdbace3f84b868513386993b054ac26c9f8ad66100f69a2797e2e02cd",
+        "1.6.7": "f163e40f8ddbc1499871702e92ae0c5b30dd58ca3beeebf616d4daf12fc41890",
       };
       const hash = NodeCrypto.createHash("sha256");
       const { version: _version, ...rest } = manifest as Record<string, unknown>;
@@ -180,6 +181,38 @@ it.layer(NodeServices.layer)("DesktopTokenMonitorPlugin", (it) => {
         hash.update(yield* fs.readFile(path.join(bundleDir(path), name)));
       }
       expect(released[manifest.version]).toBe(hash.digest("hex"));
+    }).pipe(Effect.scoped),
+  );
+
+  // Token Monitor's row layout zeroes the limit accounts' inline and edge padding with
+  // `.home-module-limits:not(.home-module-limits-classic) …`; the plug-in's bordered cards
+  // must use the same selectors, or their text sits on the card edges.
+  it.effect("keeps padding inside the limit cards over Token Monitor's row layout", () =>
+    Effect.gen(function* () {
+      const { fs, path } = yield* setup;
+      const css = yield* fs.readFileString(path.join(bundleDir(path), "speedometer.css"));
+      const rules = css
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .split("}")
+        .map((block) => block.split("{"))
+        .filter((parts): parts is [string, string] => parts.length === 2)
+        .map(([selectors, body]) => ({
+          selectors: selectors.split(",").map((selector) => selector.replace(/\s+/g, " ").trim()),
+          body,
+        }));
+      const declared = (selector: string, declaration: RegExp) =>
+        rules.some((rule) => rule.selectors.includes(selector) && declaration.test(rule.body));
+      const rowLayout = ".home-module-limits:not(.home-module-limits-classic)";
+      for (const card of ["", ":first-child", ":last-child"]) {
+        expect(declared(`${rowLayout} .home-limit-account${card}`, /padding:\s*9px;/)).toBe(true);
+      }
+      expect(
+        declared(
+          `${rowLayout} .home-limit-account + .home-limit-account::before`,
+          /content:\s*none;/,
+        ),
+      ).toBe(true);
+      expect(declared(`${rowLayout} .home-module-body`, /row-gap:\s*8px;/)).toBe(true);
     }).pipe(Effect.scoped),
   );
 
