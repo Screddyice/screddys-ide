@@ -7,6 +7,20 @@ import type { HostAutomation } from "@t3tools/contracts";
 type Obj = Record<string, unknown>;
 type LaunchctlEntry = { readonly pid: number | null; readonly status: number };
 
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 const WEEKDAYS = [
   "Sundays",
   "Mondays",
@@ -119,7 +133,12 @@ function describeCalendarEntry(entry: Obj): string {
       : minute === undefined
         ? `, every minute ${pad(hour)}:00–${pad(hour)}:59`
         : ` at ${pad(hour)}:${pad(minute)}`;
-  if (month !== undefined) return `Yearly on month ${month}, day ${day ?? 1}${at}`;
+  if (month !== undefined) {
+    const name = MONTHS[month - 1] ?? `month ${month}`;
+    if (day !== undefined) return `Yearly on ${name} ${day}${at}`;
+    // launchd treats a missing Day as every day, so the job repeats all month.
+    return `${describeCalendarEntry({ ...entry, Month: undefined })} in ${name}`;
+  }
   if (weekday !== undefined) return `${WEEKDAYS[weekday] ?? `Weekday ${weekday}`}${at}`;
   if (day !== undefined) return `Monthly on day ${day}${at}`;
   if (hour !== undefined) return `Daily${at}`;
@@ -146,6 +165,24 @@ export function parseLaunchctlList(text: string): Map<string, LaunchctlEntry> {
   return entries;
 }
 
+/** One service's state from `launchctl print <domain>/<label>`; null when there is no output. */
+export function parseLaunchctlPrint(text: string): LaunchctlEntry | null {
+  // Only the service's own lines sit one tab in; deeper lines belong to nested sections.
+  const fields = new Map(
+    [...text.matchAll(/^\t([a-z][a-z ]*?) = (.*)$/gm)].map((match) => [
+      match[1]!,
+      match[2]!.trim(),
+    ]),
+  );
+  if (!fields.has("state")) return null;
+  const pid = fields.get("pid");
+  const status = Number(fields.get("last exit code"));
+  return {
+    pid: fields.get("state") === "running" && pid && /^\d+$/.test(pid) ? Number(pid) : null,
+    status: Number.isInteger(status) ? status : 0,
+  };
+}
+
 export function parseDisabled(text: string): Set<string> {
   return new Set(
     [...text.matchAll(/"([^"]+)"\s*=>\s*(disabled|true)\b/g)].map((match) => match[1]!),
@@ -156,7 +193,8 @@ export function launchdAutomation(input: {
   readonly plist: Obj;
   readonly path: string;
   readonly scope: "user" | "system";
-  readonly daemon: boolean;
+  /** True when launchctl could not say whether the job is loaded. */
+  readonly stateUnreadable?: boolean;
   readonly loaded: ReadonlyMap<string, LaunchctlEntry>;
   readonly disabled: ReadonlySet<string>;
 }): HostAutomation | null {
@@ -198,7 +236,7 @@ export function launchdAutomation(input: {
   const status: Pick<HostAutomation, "state" | "detail"> =
     plist.Disabled === true || input.disabled.has(label)
       ? { state: "disabled" }
-      : input.daemon
+      : input.stateUnreadable
         ? { state: "unknown" }
         : entry === undefined
           ? { state: "not-loaded" }
@@ -272,7 +310,10 @@ export function cronAutomations(text: string): HostAutomation[] {
       schedule = describeCron(fields.slice(1, 6));
       command = fields[6]!;
     }
-    const program = command.split(/\s+/)[0] ?? command;
+    // Leading NAME=value assignments are environment, not the program, and may hold secrets.
+    const program =
+      command.replace(/^(?:[A-Za-z_]\w*=(?:'[^']*'|"[^"]*"|\S*)\s+)+/, "").split(/\s+/)[0] ||
+      "command";
     jobs.push({
       id: `cron:${jobs.length}`,
       source: "cron",
@@ -345,6 +386,17 @@ function run(command: string, args: readonly string[]) {
   });
 }
 
+function runWithError(command: string, args: readonly string[]) {
+  return new Promise<{ stdout: string; stderr: string }>((resolve) => {
+    NodeChildProcess.execFile(
+      command,
+      args,
+      { timeout: 10_000, maxBuffer: 4 * 1024 * 1024 },
+      (_error, stdout, stderr) => resolve({ stdout: String(stdout), stderr: String(stderr) }),
+    );
+  });
+}
+
 async function listDirectory(directory: string) {
   return NodeFSP.readdir(directory).catch(() => [] as string[]);
 }
@@ -365,15 +417,27 @@ async function readPlist(path: string): Promise<Obj | null> {
  */
 export async function readHostAutomations(home: string): Promise<HostAutomation[]> {
   const uid = process.getuid?.();
-  const [launchctlList, disabledList, crontab] = await Promise.all([
+  const [launchctlList, disabledList, systemDisabledList, crontab] = await Promise.all([
     run("/bin/launchctl", ["list"]),
     uid === undefined
       ? Promise.resolve("")
       : run("/bin/launchctl", ["print-disabled", `gui/${uid}`]),
+    run("/bin/launchctl", ["print-disabled", "system"]),
     run("/usr/bin/crontab", ["-l"]),
   ]);
   const loaded = parseLaunchctlList(launchctlList);
   const disabled = parseDisabled(disabledList);
+  const systemDisabled = parseDisabled(systemDisabledList);
+  // `launchctl list` covers only your own domain, so each daemon is asked for by name.
+  const daemonState = async (label: string) => {
+    const { stdout, stderr } = await runWithError("/bin/launchctl", ["print", `system/${label}`]);
+    const entry = parseLaunchctlPrint(stdout);
+    if (entry) return { loaded: new Map([[label, entry]]), stateUnreadable: false };
+    return {
+      loaded: new Map<string, LaunchctlEntry>(),
+      stateUnreadable: !/Could not find service/.test(stderr),
+    };
+  };
   const folders = [
     { directory: NodePath.join(home, "Library", "LaunchAgents"), scope: "user", daemon: false },
     { directory: "/Library/LaunchAgents", scope: "system", daemon: false },
@@ -388,7 +452,16 @@ export async function readHostAutomations(home: string): Promise<HostAutomation[
             .map(async (name) => {
               const path = NodePath.join(directory, name);
               const plist = await readPlist(path);
-              return plist && launchdAutomation({ plist, path, scope, daemon, loaded, disabled });
+              if (!plist) return null;
+              if (!daemon) return launchdAutomation({ plist, path, scope, loaded, disabled });
+              const label = typeof plist.Label === "string" ? plist.Label : "";
+              return launchdAutomation({
+                plist,
+                path,
+                scope,
+                disabled: systemDisabled,
+                ...(label ? await daemonState(label) : { loaded, stateUnreadable: true }),
+              });
             }),
         ),
       ),

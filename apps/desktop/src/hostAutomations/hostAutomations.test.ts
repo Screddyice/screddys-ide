@@ -7,6 +7,7 @@ import {
   launchdAutomation,
   parseDisabled,
   parseLaunchctlList,
+  parseLaunchctlPrint,
 } from "./hostAutomations.ts";
 
 const none = new Map<string, { pid: number | null; status: number }>();
@@ -19,7 +20,6 @@ const agent = (
     plist,
     path: "/opt/example/LaunchAgents/job.plist",
     scope: "user",
-    daemon: false,
     loaded,
     disabled,
   });
@@ -53,6 +53,14 @@ describe("launchdAutomation", () => {
     expect(schedule({ Hour: 8 })).toBe("Daily, every minute 08:00–08:59");
     expect(schedule({ Weekday: 1, Hour: 8 })).toBe("Mondays, every minute 08:00–08:59");
     expect(schedule({ Day: 1, Hour: 9, Minute: 0 })).toBe("Monthly on day 1 at 09:00");
+    // A month without a day runs on every matching day of that month, not once a year.
+    expect(schedule({ Month: 12, Hour: 8, Minute: 0 })).toBe("Daily at 08:00 in December");
+    expect(schedule({ Month: 12, Weekday: 1, Hour: 8, Minute: 0 })).toBe(
+      "Mondays at 08:00 in December",
+    );
+    expect(schedule({ Month: 12, Day: 25, Hour: 8, Minute: 0 })).toBe(
+      "Yearly on December 25 at 08:00",
+    );
     expect(
       schedule([
         { Hour: 8, Minute: 0 },
@@ -105,16 +113,29 @@ describe("launchdAutomation", () => {
   it("reports disabled jobs, system daemons and skips files without a label", () => {
     expect(agent({ Label: "a", Program: "/opt/a", Disabled: true })?.state).toBe("disabled");
     expect(agent({ Label: "b", Program: "/opt/b" }, none, new Set(["b"]))?.state).toBe("disabled");
-    expect(
+    const daemon = (
+      loaded: ReadonlyMap<string, { pid: number | null; status: number }>,
+      stateUnreadable = false,
+    ) =>
       launchdAutomation({
         plist: { Label: "com.vendor.daemon", Program: "/opt/d", StartInterval: 3600 },
         path: "/opt/example/LaunchDaemons/d.plist",
         scope: "system",
-        daemon: true,
-        loaded: none,
+        stateUnreadable,
+        loaded,
         disabled: new Set(),
-      }),
-    ).toMatchObject({ id: "launchd:system:com.vendor.daemon", scope: "system", state: "unknown" });
+      });
+    // A system daemon's state comes from `launchctl print system/<label>`.
+    expect(daemon(new Map([["com.vendor.daemon", { pid: 843, status: 0 }]]))).toMatchObject({
+      id: "launchd:system:com.vendor.daemon",
+      scope: "system",
+      state: "running",
+      detail: "PID 843",
+    });
+    expect(daemon(new Map([["com.vendor.daemon", { pid: null, status: 3 }]]))?.state).toBe(
+      "failed",
+    );
+    expect(daemon(none, true)?.state).toBe("unknown");
     expect(agent({ Program: "/opt/x" })).toBeNull();
   });
 });
@@ -159,6 +180,20 @@ describe("launchctl output", () => {
         'disabled services = {\n\t"com.a" => disabled\n\t"com.b" => enabled\n\t"com.c" => true\n}\n',
       ),
     ).toEqual(new Set(["com.a", "com.c"]));
+  });
+
+  it("reads one service's state from launchctl print, ignoring nested sections", () => {
+    const service = (lines: string) => `system/com.v = {\n${lines}\t\tstate = active\n}\n`;
+    expect(
+      parseLaunchctlPrint(
+        service("\tstate = running\n\tpid = 843\n\tlast exit code = (never exited)\n"),
+      ),
+    ).toEqual({ pid: 843, status: 0 });
+    expect(parseLaunchctlPrint(service("\tstate = not running\n\tlast exit code = 78\n"))).toEqual({
+      pid: null,
+      status: 78,
+    });
+    expect(parseLaunchctlPrint("")).toBeNull();
   });
 });
 
@@ -232,6 +267,8 @@ describe("cronAutomations", () => {
     expect(job?.command).toBe(
       "TOKEN=[hidden] PASSWORD=[hidden] KEY=[hidden] /opt/example/run.sh --port 2",
     );
+    // The name skips leading assignments, so their values never reach it.
+    expect(job?.name).toBe("run.sh");
   });
 });
 
