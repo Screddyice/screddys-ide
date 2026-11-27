@@ -462,7 +462,28 @@ const encodedDescriptor = Schema.encodeSync(ExecutionEnvironmentDescriptor)(
   Schema.decodeUnknownSync(ExecutionEnvironmentDescriptor)(descriptor),
 );
 
-/** Serves the environment's HTTP API and these threads until disposed. */
+// The app starts discovering this environment while its modules load, before any test runs,
+// and retries only every 3 seconds. Serving it per test made each file's first test wait for
+// that retry. The driver mock loads this module before anything can connect.
+globalThis.fetch = async (input, init) => {
+  const url = new URL(input instanceof Request ? input.url : String(input), window.location.href);
+  if (url.origin !== window.location.origin) return realFetch(input, init);
+  if (url.pathname === "/.well-known/t3/environment") return json(encodedDescriptor);
+  if (url.pathname === "/api/auth/session") {
+    return json({
+      authenticated: true,
+      auth,
+      scopes: AuthStandardClientScopes,
+      sessionMethod: "browser-session-cookie",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    });
+  }
+  // Snapshot endpoints fall back to the socket, which serves the same fixtures.
+  if (/^\/(api|oauth|\.well-known)\//.test(url.pathname)) return json({}, 404);
+  return realFetch(input, init);
+};
+
+/** Serves these threads until disposed. The environment's HTTP API is served from module load. */
 export function installFakeEnvironment(
   fixtures: ReadonlyArray<FakeThread>,
   options?: { readonly acceptCommands?: boolean },
@@ -470,26 +491,8 @@ export function installFakeEnvironment(
   threads = fixtures;
   dispatched = [];
   acceptCommands = options?.acceptCommands === true;
-  globalThis.fetch = async (input, init) => {
-    const url = new URL(input instanceof Request ? input.url : String(input), window.location.href);
-    if (url.origin !== window.location.origin) return realFetch(input, init);
-    if (url.pathname === "/.well-known/t3/environment") return json(encodedDescriptor);
-    if (url.pathname === "/api/auth/session") {
-      return json({
-        authenticated: true,
-        auth,
-        scopes: AuthStandardClientScopes,
-        sessionMethod: "browser-session-cookie",
-        expiresAt: "2099-01-01T00:00:00.000Z",
-      });
-    }
-    // Snapshot endpoints fall back to the socket, which serves the same fixtures.
-    if (/^\/(api|oauth|\.well-known)\//.test(url.pathname)) return json({}, 404);
-    return realFetch(input, init);
-  };
   return {
     [Symbol.dispose]: () => {
-      globalThis.fetch = realFetch;
       threads = [];
       dispatched = [];
       acceptCommands = false;

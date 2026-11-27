@@ -62,6 +62,8 @@ If a background service (for example a launchd agent with `KeepAlive`) keeps a s
 
 Crow CI on Shawn's Mac runs `.woodpecker.yaml` on every push and pull request: the Mission Control and chat tests, on Node 26.12.1 in a Linux arm64 container. The GitHub **Verify Screddy changes** job runs the same tests on every pull request, independently of Crow. A push made while the Mac is asleep or offline gets no Crow run.
 
+Browser tests that mount the whole app, such as the split composer and model picker tests, talk to the fake environment in `apps/web/test/fakeEnvironment.ts`. It answers the environment's HTTP requests from the moment a test file loads. The app starts looking for its environment while its modules load, before any test runs, and if that first try fails it waits 3 seconds before trying again. When the fake answered only once a test had started, the first test in each file sat through that wait. That was enough to push the four-pane split composer test past the 15-second limit on CI runners.
+
 Before opening a pull request, run `pnpm exec vp run typecheck` inside the package you changed. `apps/web` passes with no warnings, so a new warning comes from your change.
 
 ## Build a preview from main
