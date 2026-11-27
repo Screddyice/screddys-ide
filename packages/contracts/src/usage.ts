@@ -91,6 +91,8 @@ export const UsageSource = Schema.Struct({
   /** Total this count; bucket counts double-count sessions spanning days or models. */
   distinctSessions: NonNegativeInt,
   message: Schema.NullOr(TrimmedNonEmptyString),
+  /** Label of the Settings → Usage accounts entry this folder belongs to. */
+  account: Schema.optionalKey(TrimmedNonEmptyString),
   /** Cached response during refresh; repeat with awaitRefresh for fresh data. */
   refreshing: Schema.optionalKey(Schema.Literal(true)),
 });

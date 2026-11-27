@@ -25,6 +25,16 @@ vi.mock("../updates/DesktopRemoteUpdates.ts", () => ({ listen: Effect.void }));
 vi.mock("./DesktopStartupRecovery.ts", () => ({ listen: Effect.void }));
 // Startup must not write into a real Token Monitor folder from a test.
 vi.mock("./DesktopTokenMonitorPlugin.ts", () => ({ sync: Effect.void }));
+// Records when startup would stop a background server, instead of probing this machine.
+const staleServer = vi.hoisted(() => ({ onTakeOver: () => {} }));
+vi.mock("../backend/DesktopStaleServer.ts", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  takeOverLocalServerForThisApp: () =>
+    Effect.sync(() => {
+      staleServer.onTakeOver();
+      return { _tag: "Kept" };
+    }),
+}));
 
 import * as DesktopApp from "./DesktopApp.ts";
 import * as DesktopAppActivation from "./DesktopAppActivation.ts";
@@ -74,9 +84,13 @@ import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as MacPermissions from "../permissions/MacPermissions.ts";
 import * as PreviewManager from "../preview/Manager.ts";
 
-it.effect.each([false, true])(
-  "stops backends together before flushing history and cancels Linux registration, stop defect=%s",
-  (stopDefect) =>
+it.effect.each([
+  { stopDefect: false, localEnvironmentEnabled: true },
+  { stopDefect: true, localEnvironmentEnabled: true },
+  { stopDefect: false, localEnvironmentEnabled: false },
+])(
+  "stops backends together before flushing history and cancels Linux registration, stop defect=$stopDefect, local environment=$localEnvironmentEnabled",
+  ({ stopDefect, localEnvironmentEnabled }) =>
     Effect.gen(function* () {
       const registrationStarted = yield* Deferred.make<void>();
       const releaseRegistration = yield* Deferred.make<void>();
@@ -93,6 +107,7 @@ it.effect.each([false, true])(
         Effect.sync(() => {
           events.push(event);
         });
+      staleServer.onTakeOver = () => void events.push("takeOver");
       const runApp = DesktopApp.program
         .pipe(
           Effect.provide(NodeCrypto.layer),
@@ -135,7 +150,7 @@ it.effect.each([false, true])(
           Effect.provideService(DesktopAppSettings.DesktopAppSettings, {
             load: Effect.void,
             get: Effect.succeed({
-              localEnvironmentEnabled: true,
+              localEnvironmentEnabled,
               serverExposureMode: "local-only",
             }),
           } as unknown as DesktopAppSettings.DesktopAppSettings["Service"]),
@@ -180,6 +195,9 @@ it.effect.each([false, true])(
           } as DesktopState.DesktopState["Service"]),
           Effect.provideService(DesktopWindow.DesktopWindow, {
             ensureMain: record("window").pipe(
+              Effect.andThen(Deferred.succeed(windowStarted, undefined)),
+            ),
+            createMainIfBackendReady: record("window").pipe(
               Effect.andThen(Deferred.succeed(windowStarted, undefined)),
             ),
           } as unknown as DesktopWindow.DesktopWindow["Service"]),
@@ -261,7 +279,14 @@ it.effect.each([false, true])(
       );
       yield* Deferred.await(registrationStarted);
       yield* Deferred.await(windowStarted);
-      assert.deepEqual(events, ["identity", "ready", "identity", "backend", "window"]);
+      // With the local environment off the app may be paired with the background server, so it
+      // must leave that server running.
+      assert.deepEqual(
+        events,
+        localEnvironmentEnabled
+          ? ["identity", "ready", "identity", "takeOver", "backend", "window"]
+          : ["identity", "ready", "identity", "window"],
+      );
       assert.isFalse(yield* Deferred.isDone(registrationStopped));
       const shutdown = yield* DesktopShutdown.DesktopShutdown;
       yield* shutdown.request;

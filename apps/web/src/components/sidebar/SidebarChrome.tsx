@@ -230,6 +230,23 @@ export function SidebarWorkspaceLinks({
           <span>Automations</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          isActive={pathname === "/usage"}
+          render={
+            <Link
+              to="/usage"
+              activeOptions={{ exact: true, includeSearch: false }}
+              onClick={() => {
+                if (isMobile) setOpenMobile(false);
+              }}
+            />
+          }
+        >
+          <ChartNoAxesColumnIcon aria-hidden="true" />
+          <span>Usage</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
     </SidebarMenu>
   );
 }

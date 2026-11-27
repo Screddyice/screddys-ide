@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 
 import { getMissionControlAgentActivity } from "./methods/missionControlAgentActivity.ts";
+import { getHostAutomations } from "./methods/hostAutomations.ts";
 import {
   getMissionControl,
   getMissionControlReply,
@@ -174,6 +175,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(routeMissionControlItems);
   yield* ipc.handle(sendGrokBotPromptMethod);
   yield* ipc.handle(getMissionControlAgentActivity);
+  yield* ipc.handle(getHostAutomations);
   yield* ipc.handle(openBlurtVoice);
   yield* ipc.handle(turnBlurtVoice);
   yield* ipc.handle(closeBlurtVoice);

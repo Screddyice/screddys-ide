@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off -- A private Unix socket lets the local Screddy server reach Mission Control.
+// @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off -- A private Unix socket lets the local Screddy server reach Mission Control.
 import * as NodeFSP from "node:fs/promises";
 import * as NodeNet from "node:net";
 import * as NodePath from "node:path";
@@ -58,6 +58,8 @@ async function answer(raw: string, dispatch: Dispatch) {
 
 /** How many item ids from recent answers an app may still act on. */
 const SHOWN_LIMIT = 2_000;
+/** An item an app was shown longer ago than this must be read again before it can be acted on. */
+const SHOWN_FOR_MS = 15 * 60_000;
 const unshown = { ok: false, error: "Read Mission Control again, then act on an item it shows." };
 
 function fields(value: unknown): Record<string, unknown> {
@@ -69,22 +71,27 @@ function fields(value: unknown): Record<string, unknown> {
  * priorities answer, or a task they just added. A restricted item's id never qualifies, even if the
  * app learned it some other way.
  */
-export function guardShownItems(dispatch: Dispatch): Dispatch {
-  const shown = new Set<string>();
+export function guardShownItems(dispatch: Dispatch, now: () => number = Date.now): Dispatch {
+  // When each item was last shown, oldest first.
+  const shown = new Map<string, number>();
   const remember = (id: unknown) => {
     if (typeof id !== "string") return;
     shown.delete(id);
-    shown.add(id);
-    const oldest = shown.values().next().value;
+    shown.set(id, now());
+    const oldest = shown.keys().next().value;
     if (shown.size > SHOWN_LIMIT && oldest !== undefined) shown.delete(oldest);
+  };
+  const recent = (id: unknown) => {
+    if (typeof id !== "string") return false;
+    const at = shown.get(id);
+    if (at !== undefined && now() - at <= SHOWN_FOR_MS) return true;
+    shown.delete(id);
+    return false;
   };
   return async (op, payload) => {
     const action = op === "action" ? fields(payload) : undefined;
     const target = op === "reply-preview" ? payload : action?.itemId;
-    if (
-      (op === "reply-preview" || (action && action.kind !== "create-task")) &&
-      !(typeof target === "string" && shown.has(target))
-    ) {
+    if ((op === "reply-preview" || (action && action.kind !== "create-task")) && !recent(target)) {
       return unshown;
     }
     const result = await dispatch(op, payload);

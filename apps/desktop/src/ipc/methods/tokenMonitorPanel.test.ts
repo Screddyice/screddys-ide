@@ -115,6 +115,18 @@ describe("makeTokenMonitorPanel", () => {
     expect(t.deps.activate).toHaveBeenCalledExactlyOnceWith(321);
   });
 
+  it("cancels the open when a second click comes before Token Monitor was asked to open", () => {
+    const t = setup();
+    expect(t.panel.click()).toBe("open");
+    expect(t.panel.click()).toBe("close");
+    expect(t.watcher.kill).toHaveBeenCalledOnce();
+    t.emit("front 321");
+    t.advance(2_000);
+    expect(t.deps.open).not.toHaveBeenCalled();
+    expect(t.deps.activate).not.toHaveBeenCalled();
+    expect(t.panel.click()).toBe("open");
+  });
+
   it("treats the panel as closed after a close, even if the watcher never says so", () => {
     const t = setup();
     t.panel.click();

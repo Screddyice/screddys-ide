@@ -2102,6 +2102,117 @@ describe("UsageService", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.live("counts and labels usage folders added in Settings, skipping turned-off ones", () =>
+    Effect.gen(function* () {
+      const { transcript, settings, home } = yield* setup;
+      const teamHome = NodePath.join(home, "team-context");
+      const offHome = NodePath.join(home, "old-claude");
+      const codexHome = NodePath.join(home, "codex-backup");
+      yield* Effect.promise(async () => {
+        await NodeFSP.writeFile(transcript, claudeLine(1, 5));
+        await NodeFSP.mkdir(NodePath.join(teamHome, "projects", "p"), { recursive: true });
+        await NodeFSP.writeFile(
+          NodePath.join(teamHome, "projects", "p", "s.jsonl"),
+          claudeLine(2, 7, "claude-fable-5", "team-session"),
+        );
+        await NodeFSP.mkdir(NodePath.join(offHome, "projects"), { recursive: true });
+        await NodeFSP.writeFile(
+          NodePath.join(offHome, "projects", "s.jsonl"),
+          claudeLine(3, 100, "claude-fable-5", "off-session"),
+        );
+        await NodeFSP.mkdir(NodePath.join(codexHome, "sessions"), { recursive: true });
+        await NodeFSP.writeFile(
+          NodePath.join(codexHome, "sessions", "rollout.jsonl"),
+          [
+            { type: "session_meta", payload: { id: "codex-backup-session" } },
+            { type: "turn_context", payload: { model: "gpt-5.6-sol" } },
+            {
+              type: "event_msg",
+              timestamp: "2026-08-01T10:00:00Z",
+              payload: {
+                type: "token_count",
+                info: { last_token_usage: { input_tokens: 10, output_tokens: 11 } },
+              },
+            },
+          ]
+            .map((line) => encodeUnknownJsonString(line))
+            .join("\n") + "\n",
+        );
+      });
+      const service = yield* UsageService.make.pipe(
+        Effect.provide(
+          layerService({
+            prefix: "usage-service-tracked-accounts-test",
+            home,
+            settings: {
+              ...settings,
+              usageAccounts: {
+                team: { provider: "claude", label: "Team Nebula", homePath: "~/team-context" },
+                old: { provider: "claude", label: "Old", homePath: offHome, enabled: false },
+                backup: { provider: "codex", label: "Codex backup", homePath: codexHome },
+                // Already counted by the Claude instance; adding it only names it.
+                main: {
+                  provider: "claude",
+                  label: "Main",
+                  homePath: NodePath.join(home, "claude"),
+                },
+              },
+            },
+          }),
+        ),
+        Effect.provideService(HostProcess.HomeDirectory, home),
+      );
+      const summary = yield* service.readSummary(WINDOW);
+      assert.strictEqual(totalOutputTokens(summary), 5 + 7 + 11);
+      assert.deepStrictEqual(
+        summary.sources
+          .flatMap((source) =>
+            source.account === undefined
+              ? []
+              : [`${source.fingerprint.provider}:${source.account}`],
+          )
+          .toSorted(),
+        ["claude:Main", "claude:Team Nebula", "codex:Codex backup"],
+      );
+    }).pipe(Effect.scoped),
+  );
+
+  it.live("leaves out a folder whose usage account is turned off, even one read by default", () =>
+    Effect.gen(function* () {
+      const { transcript, settings, home } = yield* setup;
+      yield* Effect.promise(() => NodeFSP.writeFile(transcript, claudeLine(1, 5)));
+      const service = yield* UsageService.make.pipe(
+        Effect.provide(
+          layerService({
+            prefix: "usage-service-account-off-test",
+            home,
+            settings: {
+              ...settings,
+              usageAccounts: {
+                main: {
+                  provider: "claude",
+                  label: "Main",
+                  homePath: NodePath.join(home, "claude"),
+                  enabled: false,
+                },
+              },
+            },
+          }),
+        ),
+        Effect.provideService(HostProcess.HomeDirectory, home),
+      );
+      const summary = yield* service.readSummary(WINDOW);
+      assert.strictEqual(totalOutputTokens(summary), 0);
+      assert.isFalse(
+        summary.sources.some(
+          (source) =>
+            source.fingerprint.provider === "claude" &&
+            source.fingerprint.resolvedHomePath.endsWith(NodePath.join("claude", "projects")),
+        ),
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.live(
     "uses explicit account settings before environment and default homes, then refreshes them",
     () =>

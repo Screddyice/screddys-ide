@@ -52,6 +52,8 @@ export function makeTokenMonitorPanel(deps: TokenMonitorPanelDeps) {
   let watcher: PanelWatcher | null = null;
   let cancelFallback: (() => void) | null = null;
   let generation = 0;
+  // Token Monitor has not yet been asked to open the panel this click requested.
+  let openPending = false;
   const markHidden = () => {
     if (visible) hiddenAt = deps.now();
     visible = false;
@@ -65,7 +67,14 @@ export function makeTokenMonitorPanel(deps: TokenMonitorPanelDeps) {
   return {
     click(): PanelClick {
       const action = panelClickAction({ visible, hiddenAt }, deps.now());
-      if (action === "close") {
+      if (action === "close" && openPending) {
+        // Nothing has opened yet: dropping the pending open is the whole close, and no focus moves.
+        openPending = false;
+        generation++;
+        stopWatching();
+        visible = false;
+        hiddenAt = null;
+      } else if (action === "close") {
         deps.activate(frontPid);
         // Closed from Screddy's side now, so the next click opens even if no "hidden" line comes.
         markHidden();
@@ -77,9 +86,11 @@ export function makeTokenMonitorPanel(deps: TokenMonitorPanelDeps) {
       hiddenAt = null;
       frontPid = 0;
       let opened = false;
+      openPending = true;
       const openOnce = () => {
         if (opened || !live()) return;
         opened = true;
+        openPending = false;
         cancelFallback?.();
         cancelFallback = null;
         deps.open();
@@ -113,6 +124,7 @@ export function makeTokenMonitorPanel(deps: TokenMonitorPanelDeps) {
     },
     dispose() {
       generation++;
+      openPending = false;
       stopWatching();
     },
   };

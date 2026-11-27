@@ -34,6 +34,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import { BUILT_IN_USAGE_DRIVERS, type BuiltInUsageReadersEnv } from "../provider/builtInDrivers.ts";
 import type { ProviderDriver } from "@t3tools/provider-core/server/driver";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
+import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import type {
   ProviderUsageInstance,
   TranscriptUsageFormat,
@@ -93,6 +94,7 @@ interface TranscriptSource {
   readonly dir: string;
   readonly volumeId: string;
   readonly fileName?: string;
+  readonly account?: string;
 }
 
 const RatesCacheFile = Schema.Struct({
@@ -333,13 +335,34 @@ export const make = Effect.gen(function* () {
   ) {
     const dirs: Array<TranscriptSource> = [];
     const seen = new Set<string>();
+    const accountLabels = new Map<string, string>();
+    const homeDirectory = yield* HostProcess.HomeDirectory;
     for (const { driver, reader } of transcriptReaders) {
-      const { provider, format } = reader;
-      const directories = yield* Effect.forEach(
-        yield* usageInstances(driver, settings),
-        (instance) => reader.directories(instance),
-      );
-      for (const { dir: directory, fileName } of directories.flat()) {
+      const { provider, format, accountFolder } = reader;
+      const directories: Array<{ dir: string; fileName?: string; account?: string }> =
+        (yield* Effect.forEach(yield* usageInstances(driver, settings), (instance) =>
+          reader.directories(instance),
+        )).flat();
+      // A turned-off account's folder stays out of the totals, even one read by default.
+      const excluded = new Set<string>();
+      for (const account of Object.values(settings.usageAccounts)) {
+        if (account.provider !== provider || accountFolder === undefined) continue;
+        const dir = path.resolve(
+          expandHomePath(account.homePath, homeDirectory),
+          accountFolder.dir,
+        );
+        if (!account.enabled) {
+          excluded.add(yield* fileSystem.realPath(dir).pipe(Effect.orElseSucceed(() => dir)));
+          continue;
+        }
+        directories.push({
+          dir,
+          ...(accountFolder.fileName === undefined ? {} : { fileName: accountFolder.fileName }),
+          account: account.label,
+        });
+      }
+      for (const { dir: directory, fileName, account } of directories) {
+        if (excluded.has(directory)) continue;
         const sourceKey = provider + "\0" + directory;
         const previous = sourceCache.get(sourceKey);
         const dir = yield* fileSystem
@@ -363,7 +386,9 @@ export const make = Effect.gen(function* () {
           sourceCache.set(sourceKey, { dir, volumeId });
           cacheDirty = true;
         }
+        if (excluded.has(dir)) continue;
         const key = `${provider}\0${dir}`;
+        if (account !== undefined && !accountLabels.has(key)) accountLabels.set(key, account);
         if (seen.has(key)) continue;
         seen.add(key);
         dirs.push({
@@ -375,7 +400,11 @@ export const make = Effect.gen(function* () {
         });
       }
     }
-    return dirs;
+    // A folder an instance already reads keeps its first scan; adding it as an account only names it.
+    return dirs.map((source) => {
+      const account = accountLabels.get(`${source.provider}\0${source.dir}`);
+      return account === undefined ? source : { ...source, account };
+    });
   });
 
   // Share first loads so concurrent readers cannot scan against a still-empty cache.
@@ -588,6 +617,7 @@ export const make = Effect.gen(function* () {
         }[]
       | null;
     readonly refreshing?: true;
+    readonly account?: string;
   }
 
   const scanTranscriptDir = Effect.fn("UsageService.scanTranscriptDir")(function* (
@@ -688,7 +718,16 @@ export const make = Effect.gen(function* () {
 
     // Scan independent sources together, directories sequentially to bound open files; preserve order for first-copy dedupe.
     const [transcripts, scanDirs] = yield* Effect.all(
-      [Effect.forEach(dirs, (dir) => scanTranscriptDir(dir, windowStartMs)), scans],
+      [
+        Effect.forEach(dirs, (dir) =>
+          scanTranscriptDir(dir, windowStartMs).pipe(
+            Effect.map((scanned): ScannedDir =>
+              dir.account === undefined ? scanned : { ...scanned, account: dir.account },
+            ),
+          ),
+        ),
+        scans,
+      ],
       { concurrency: "unbounded" },
     );
     const scanned: readonly ScannedDir[] = [...transcripts, ...scanDirs.flat()];
@@ -835,7 +874,17 @@ export const make = Effect.gen(function* () {
 
     for (const [
       index,
-      { provider, dir, volumeId, files, status, message, refreshing, hostId: sourceHostId },
+      {
+        provider,
+        dir,
+        volumeId,
+        files,
+        status,
+        message,
+        refreshing,
+        account,
+        hostId: sourceHostId,
+      },
     ] of scannedDirs.entries()) {
       let scannedFiles = 0;
       let skippedFiles = 0;
@@ -899,6 +948,7 @@ export const make = Effect.gen(function* () {
                 .filter(Boolean)
                 .join(" ")
             : sourceMessage,
+        ...(account === undefined ? {} : { account }),
         ...(refreshing ? { refreshing } : {}),
       });
     }

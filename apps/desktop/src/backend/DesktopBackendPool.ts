@@ -15,6 +15,7 @@ import { ChildProcessSpawner } from "effect/process";
 
 import * as DesktopBackendConfiguration from "./DesktopBackendConfiguration.ts";
 import * as DesktopBackendManager from "./DesktopBackendManager.ts";
+import * as DesktopStaleServer from "./DesktopStaleServer.ts";
 import * as DesktopObservability from "../app/DesktopObservability.ts";
 import * as DesktopState from "../app/DesktopState.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
@@ -112,6 +113,35 @@ export const layer = Layer.effect(
     // Parent instance scopes to the pool so shutdown runs stop finalizers before the OS kills backends.
     const layerScope = yield* Scope.Scope;
     const factoryContext = yield* Effect.context<BackendInstanceFactoryRequirements>();
+    const takeOverContext =
+      yield* Effect.context<
+        Effect.Services<ReturnType<typeof DesktopStaleServer.takeOverLocalServerForThisApp>>
+      >();
+    // Set once the primary exists; the owned-home recovery below only runs after it has started.
+    let primaryInstance: DesktopBackendInstance | undefined;
+    const ownedHome = DesktopStaleServer.ownedHomeRecovery({
+      takeOver: DesktopStaleServer.takeOverLocalServerForThisApp().pipe(
+        Effect.provide(takeOverContext),
+      ),
+      // The manager calls this while holding the instance's lock, which start also takes.
+      restart: Effect.suspend(() => primaryInstance?.start ?? Effect.void).pipe(
+        Effect.forkDetach,
+        Effect.asVoid,
+      ),
+      giveUp: electronDialog
+        .showErrorBox(
+          "This T3 home is unavailable",
+          "Another T3 Code server, such as the background service, is using this data directory, or an older background service is set up for it. Stop that server or try `t3 update`. If the older launcher cannot update, run `t3 service uninstall` and optionally reinstall with `t3 service install` from a current CLI. Use `npx t3@latest` if `t3` is missing or outdated, and pass `--base-dir` with the service's T3 home to each command. Then reopen T3 Code. You can also set a separate T3CODE_HOME and pair with the running server.",
+        )
+        .pipe(Effect.andThen(electronApp.quit)),
+      pause: Effect.sleep("1 second"),
+      maxAttempts: 4,
+      // The window opens while the primary is still starting, so it may have loaded against the
+      // server that took the data folder; reload it once this app's server is up.
+      afterRecovered: desktopWindow.flushRendererStorage.pipe(
+        Effect.andThen(desktopWindow.runMainContentsCommand("reload")),
+      ),
+    });
 
     // Persist fatal Windows fallbacks; transient transport failures must preserve the user's WSL preference.
     const handlePrimaryPreflightFailure = Effect.fn("desktop.backendPool.primaryPreflightFailed")(
@@ -168,19 +198,17 @@ export const layer = Layer.effect(
               error: error.message,
             }),
           ),
+          // After the catch, so a window error never leaves the retry count spent.
+          Effect.andThen(ownedHome.ready),
         ),
       onStartupFailure: (failure) =>
         SubscriptionRef.set(primaryBackendStartup, { _tag: "Failing", ...failure }),
       onShutdown: () => desktopWindow.handleBackendNotReady,
       onPreflightFailed: handlePrimaryPreflightFailure,
-      onStateDirOwned: () =>
-        electronDialog
-          .showErrorBox(
-            "This T3 home is unavailable",
-            "Another T3 Code server, such as the background service, is using this data directory, or an older background service is set up for it. Stop that server or try `t3 update`. If the older launcher cannot update, run `t3 service uninstall` and optionally reinstall with `t3 service install` from a current CLI. Use `npx t3@latest` if `t3` is missing or outdated, and pass `--base-dir` with the service's T3 home to each command. Then reopen T3 Code. You can also set a separate T3CODE_HOME and pair with the running server.",
-          )
-          .pipe(Effect.andThen(electronApp.quit)),
+      onStateDirOwned: () => ownedHome.recover,
     });
+
+    primaryInstance = primary;
 
     const instancesRef = yield* SynchronizedRef.make<
       ReadonlyMap<BackendInstanceId, RegisteredInstance>

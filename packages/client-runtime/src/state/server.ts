@@ -1127,11 +1127,19 @@ export function createServerEnvironmentAtoms<R, E>(
     Atom.make((get) => {
       const settings = get(settingsValueAtom(environmentId));
       const aliases = settings?.usageModelAliases ?? {};
+      const accounts = settings?.usageAccounts ?? {};
       return JSON.stringify([
         get(usagePricesAtom(environmentId)),
         Object.keys(aliases)
           .sort()
           .map((model) => [model, aliases[model]]),
+        // Adding, renaming or turning off an account changes which folders are read and how they're named.
+        Object.keys(accounts)
+          .sort()
+          .map((id) => {
+            const account = accounts[id]!;
+            return [id, account.provider, account.label, account.homePath, account.enabled];
+          }),
       ]);
     }).pipe(Atom.withLabel(`environment-data:server:usage-scan-settings:${environmentId}`)),
   );
